@@ -487,7 +487,7 @@ void compute(
               for (int p = 0; p < ACC_VEC_AXI_RATIO; p++) {
                 axi_T packet = 0;
                 for (int w = 0; w < AXI_ACC_RATIO; w++) {
-                  packet.range((w + 1) * VTA_ACC_WIDTH - 1, w * VTA_ACC_WIDTH) = a_tensor[b][p * AXI_ACC_RATIO + w];
+                  packet.range((w + 1) * VTA_ACC_WIDTH - 1, w * VTA_ACC_WIDTH) = dst_tensor[b][p * AXI_ACC_RATIO + w];
                 }
                 acc_mem[dst_idx][b * ACC_VEC_AXI_RATIO + p] = packet;
               }
