@@ -38,6 +38,10 @@ def main():
                         help="print the target")
     parser.add_argument("--cfg-str", action="store_true",
                         help="print the configuration string")
+    parser.add_argument("--get-gemmii", action="store_true",
+                        help="returns the GEMM core II")
+    parser.add_argument("--get-taluii", action="store_true",
+                        help="returns the tensor ALU core II")
     parser.add_argument("--get-inpwidth", action="store_true",
                         help="returns log of input bitwidth")
     parser.add_argument("--get-wgtwidth", action="store_true",
@@ -86,10 +90,7 @@ def main():
     if not ok_path_list:
         raise RuntimeError("Cannot find config in %s" % str(path_list))
     cfg = json.load(open(ok_path_list[0]))
-    cfg["LOG_OUT_BUFF_SIZE"] = (
-        cfg["LOG_ACC_BUFF_SIZE"] +
-        cfg["LOG_OUT_WIDTH"] -
-        cfg["LOG_ACC_WIDTH"])
+    cfg["LOG_OUT_BUFF_SIZE"] = cfg["LOG_ACC_BUFF_SIZE"] + cfg["LOG_ACC_WIDTH"] - cfg["LOG_OUT_WIDTH"]
     pkg = get_pkg_config(cfg)
 
     if args.target:
@@ -119,10 +120,12 @@ def main():
 
     if args.cfg_str:
         # Needs to match the BITSTREAM string in python/vta/environment.py
-        cfg_str = "{}x{}x{}_{}bx{}b_{}_{}_{}_{}_{}MHz_{}ns_v{}".format(
+        cfg_str = "{}x{}x{}_g{}_a{}_{}bx{}b_{}_{}_{}_{}_{}MHz_{}ns_v{}".format(
             (1 << cfg["LOG_BATCH"]),
             (1 << cfg["LOG_BLOCK_IN"]),
             (1 << cfg["LOG_BLOCK_OUT"]),
+            cfg["GEMM_II"],
+            cfg["TALU_II"],
             (1 << cfg["LOG_INP_WIDTH"]),
             (1 << cfg["LOG_WGT_WIDTH"]),
             cfg["LOG_UOP_BUFF_SIZE"],
@@ -133,6 +136,12 @@ def main():
             cfg["HW_CLK_TARGET"],
             cfg["HW_VER"].replace('.', '_'))
         print(cfg_str)
+
+    if args.get_gemmii:
+        print(cfg["GEMM_II"])
+
+    if args.get_taluii:
+        print(cfg["TALU_II"])
 
     if args.get_inpwidth:
         print(cfg["LOG_INP_WIDTH"])

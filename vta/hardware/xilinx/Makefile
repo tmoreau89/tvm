@@ -14,7 +14,7 @@ VIVADO = vivado
 HSI = hsi
 
 # HLS mode
-MODE = skip_sim
+MODE = all
 # Debug flag
 DEBUG = false
 # SLURM
@@ -50,6 +50,8 @@ VTA_OUT_BUFF_SIZE := $(shell ${VTA_CONFIG} --get-outbuffsize)
 #--------------------
 VTA_CLOCK_FREQ = $(shell ${VTA_CONFIG} --get-fpgafreq)
 VTA_TARGET_PER = $(shell ${VTA_CONFIG} --get-fpgaper)
+VTA_GEMM_II = $(shell ${VTA_CONFIG} --get-gemmii)
+VTA_TALU_II = $(shell ${VTA_CONFIG} --get-taluii)
 
 #---------------------
 # Compilation parameters
@@ -85,7 +87,7 @@ $(IP_PATH): $(SRC_DIR)/*
 	cd $(IP_BUILD_PATH) && \
 		$(VIVADO_HLS) -f $(SCRIPT_DIR)/hls.tcl \
 		-tclargs $(SRC_DIR) $(SIM_DIR) $(TEST_DIR) $(INCLUDE_DIR) \
-		$(MODE) $(DEBUG) $(NO_DSP) $(NO_ALU) $(VTA_TARGET_PER) \
+		$(MODE) $(DEBUG) $(NO_DSP) $(NO_ALU) $(VTA_TARGET_PER) $(VTA_GEMM_II) $(VTA_TALU_II) \
 		$(VTA_INP_WIDTH) $(VTA_WGT_WIDTH) $(VTA_ACC_WIDTH) $(VTA_OUT_WIDTH) \
 		$(VTA_BATCH) $(VTA_IN_BLOCK) $(VTA_OUT_BLOCK) \
 		$(VTA_UOP_BUFF_SIZE) $(VTA_INP_BUFF_SIZE) $(VTA_WGT_BUFF_SIZE) \
@@ -99,7 +101,7 @@ $(BIT_PATH): $(IP_PATH)
 	mkdir -p $(HW_BUILD_PATH)
 	cd $(HW_BUILD_PATH) && \
 		$(VIVADO) -mode tcl -source $(SCRIPT_DIR)/vivado.tcl \
-		-tclargs $(BUILD_DIR)/hls/$(CONF) $(VTA_HW_COMP_THREADS) $(VTA_CLOCK_FREQ) \
+		-tclargs $(BUILD_DIR)/hls/$(CONF) $(VTA_HW_COMP_THREADS) $(VTA_CLOCK_FREQ) $(VTA_GEMM_II) \
 		$(VTA_INP_WIDTH) $(VTA_WGT_WIDTH) $(VTA_OUT_WIDTH) \
 		$(VTA_BATCH) $(VTA_IN_BLOCK) $(VTA_OUT_BLOCK) \
 		$(VTA_INP_BUFF_SIZE) $(VTA_WGT_BUFF_SIZE) $(VTA_OUT_BUFF_SIZE)

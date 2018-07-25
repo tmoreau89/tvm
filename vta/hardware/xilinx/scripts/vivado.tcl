@@ -22,19 +22,20 @@ if { [string first $scripts_vivado_version $current_vivado_version] == -1 } {
 
 # Parse argument list, derive the clock to utilize
 set clock_id 0
-if { [llength $argv] eq 12 } {
+if { [llength $argv] eq 13 } {
   set ip_path [lindex $argv 0]
   set num_threads [lindex $argv 1]
   set clock_freq [lindex $argv 2]
-  set inp_width [expr 1 << [lindex $argv 3]]
-  set wgt_width [expr 1 << [lindex $argv 4]]
-  set out_width [expr 1 << [lindex $argv 5]]
-  set batch [expr 1 << [lindex $argv 6]]
-  set out_block [expr 1 << [lindex $argv 7]]
-  set in_block [expr 1 << [lindex $argv 8]]
-  set inp_mem_size [expr 1 << [lindex $argv 9]]
-  set wgt_mem_size [expr 1 << [lindex $argv 10]]
-  set out_mem_size [expr 1 << [lindex $argv 11]]
+  set gemm_ii [lindex $argv 3]
+  set inp_width [expr 1 << [lindex $argv 4]]
+  set wgt_width [expr 1 << [lindex $argv 5]]
+  set out_width [expr 1 << [lindex $argv 6]]
+  set batch [expr 1 << [lindex $argv 7]]
+  set out_block [expr 1 << [lindex $argv 8]]
+  set in_block [expr 1 << [lindex $argv 9]]
+  set inp_mem_size [expr 1 << [lindex $argv 10]]
+  set wgt_mem_size [expr 1 << [lindex $argv 11]]
+  set out_mem_size [expr 1 << [lindex $argv 12]]
   if {$clock_freq eq 100} {
     set clock_id 0
     puts "Setting clock frequency to 100MHz"
@@ -52,14 +53,14 @@ if { [llength $argv] eq 12 } {
     puts "Unrecognized clock frequency, setting clock to 100MHz"
   }
 } else {
-  puts "Arg list incomplete: <path to ip dir> <num threads> <clock freq> \
+  puts "Arg list incomplete: <path to ip dir> <num threads> <clock freq> <gemm ii> \
     <inp width> <wgt_width> <out_width> <batch> <batch> <out_block> <in_block
     <inp_mem_size> <wgt_mem_size> <out_mem_size>"
   return 1
 }
 
 # Derive input mem parameters
-set inp_mem_width [expr $inp_width * $batch * $in_block]
+set inp_mem_width [expr $inp_width * $batch * $in_block / $gemm_ii]
 set inp_bus_width 1024
 set inp_part [expr $inp_mem_width / $inp_bus_width]
 if {[expr $inp_part == 0]} {
@@ -69,7 +70,7 @@ if {[expr $inp_part == 0]} {
 set inp_mem_depth [expr $inp_mem_size * 8 / ($inp_mem_width * $inp_part)]
 
 # Derive weight mem parameters
-set wgt_mem_width [expr $wgt_width * $out_block * $in_block]
+set wgt_mem_width [expr $wgt_width * $out_block * $in_block / $gemm_ii]
 set wgt_bus_width 1024
 set wgt_part [expr $wgt_mem_width / $wgt_bus_width]
 if {[expr $wgt_part == 0]} {
@@ -79,7 +80,7 @@ if {[expr $wgt_part == 0]} {
 set wgt_mem_depth [expr $wgt_mem_size * 8 / ($wgt_mem_width * $wgt_part)]
 
 # Derive output mem parameters
-set out_mem_width [expr $out_width * $batch * $out_block]
+set out_mem_width [expr $out_width * $batch * $out_block / $gemm_ii]
 set out_bus_width 1024
 set out_part [expr $out_mem_width / $out_bus_width]
 if {[expr $out_part == 0]} {

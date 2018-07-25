@@ -836,7 +836,7 @@ class InsnQueue : public BaseQueue {
     if (insn->opcode == VTA_OPCODE_STORE) {
       // FIXME: Right now memory_type is a 2-bit field which means that
       //        VTA_MEM_ID_OUT will appear as 0. For now we'll refrain from
-      //        checking the memory_type to avoid an CHECKion error...
+      //        checking the memory_type to avoid an assertion error...
       return kStoreStage;
     }
     LOG(FATAL) << "not reached";

@@ -13,38 +13,29 @@
 
 #include <vta/hw_spec.h>
 
+/* \typedef axi_T AXI datatype*/
+typedef ap_uint<VTA_AXI_WIDTH> axi_T;
+
 /* \typedef uop_T Micro-op datatype*/
 typedef ap_uint<VTA_UOP_WIDTH> uop_T;
 
 /* \typedef inp_T Input datatype*/
-typedef ap_int<VTA_INP_WIDTH> inp_T;
+typedef ap_uint<VTA_INP_WIDTH> inp_T;
 
 /* \typedef wgt_T Weight datatype*/
-typedef ap_int<VTA_WGT_WIDTH> wgt_T;
+typedef ap_uint<VTA_WGT_WIDTH> wgt_T;
 
 /* \typedef out_T Output datatype*/
-typedef ap_int<VTA_OUT_WIDTH> out_T;
+typedef ap_uint<VTA_OUT_WIDTH> out_T;
 
 /* \typedef acc_T Accumulator datatype*/
-typedef ap_int<VTA_ACC_WIDTH> acc_T;
+typedef ap_uint<VTA_ACC_WIDTH> acc_T;
 
 /* \typedef mul_T Multiplier output datatype*/
-typedef ap_int<VTA_WGT_WIDTH+VTA_INP_WIDTH+1> mul_T;
+typedef ap_uint<VTA_WGT_WIDTH+VTA_INP_WIDTH+1> mul_T;
 
 /* \typedef sum_T GEMM accumulator datatype*/
-typedef ap_int<VTA_WGT_WIDTH+VTA_INP_WIDTH+VTA_LOG_BLOCK_IN+1> sum_T;
-
-/* \typedef inp_vec_T Input vector datatype*/
-typedef ap_uint<VTA_INP_WIDTH*VTA_BLOCK_IN> inp_vec_T;
-
-/* \typedef wgt_vec_T Weight vector datatype*/
-typedef ap_uint<VTA_WGT_WIDTH*VTA_BLOCK_IN> wgt_vec_T;
-
-/* \typedef acc_vec_T Accumulator vector datatype*/
-typedef ap_uint<VTA_ACC_WIDTH*VTA_BLOCK_OUT> acc_vec_T;
-
-/* \typedef out_vec_T Output vector datatype*/
-typedef ap_uint<VTA_OUT_WIDTH*VTA_BLOCK_OUT> out_vec_T;
+typedef ap_uint<VTA_WGT_WIDTH+VTA_INP_WIDTH+VTA_LOG_BLOCK_IN+1> sum_T;
 
 /* \typedef uop_idx_T Micro-op SRAM index datatype*/
 typedef ap_uint<VTA_LOG_UOP_BUFF_DEPTH+1> uop_idx_T;
@@ -94,6 +85,15 @@ typedef ap_int<VTA_ALUOP_IMM_BIT_WIDTH> aluop_imm_T;
 /* \typedef aluop_opcode_T ALU operation shift immediate datatype*/
 typedef ap_int<VTA_LOG_ACC_WIDTH> aluop_sh_imm_T;
 
+#define INP_VEC_AXI_RATIO (VTA_WGT_VECTOR_WIDTH / VTA_AXI_WIDTH)
+#define WGT_VEC_AXI_RATIO (VTA_INP_VECTOR_WIDTH / VTA_AXI_WIDTH)
+#define ACC_VEC_AXI_RATIO (VTA_ACC_VECTOR_WIDTH / VTA_AXI_WIDTH)
+#define OUT_VEC_AXI_RATIO (VTA_OUT_VECTOR_WIDTH / VTA_AXI_WIDTH)
+#define AXI_INP_RATIO (VTA_AXI_WIDTH / VTA_WGT_WIDTH)
+#define AXI_WGT_RATIO (VTA_AXI_WIDTH / VTA_INP_WIDTH)
+#define AXI_ACC_RATIO (VTA_AXI_WIDTH / VTA_ACC_WIDTH)
+#define AXI_OUT_RATIO (VTA_AXI_WIDTH / VTA_OUT_WIDTH)
+
 /*!
 * \brief Fetch module.
 *   Reads in \a insn_count instructions via DMA and pushes them to the
@@ -127,13 +127,13 @@ void fetch(
 * \param wgt_mem Local weight SRAM buffer. Write only single port BRAM.
 */
 void load(
-  volatile inp_vec_T *inputs,
-  volatile wgt_vec_T *weights,
+  volatile axi_T *inputs,
+  volatile axi_T *weights,
   hls::stream<insn_T> &load_queue,
   hls::stream<bool> &g2l_dep_queue,
   hls::stream<bool> &l2g_dep_queue,
-  inp_vec_T inp_mem[VTA_INP_BUFF_DEPTH][VTA_BATCH],
-  wgt_vec_T wgt_mem[VTA_WGT_BUFF_DEPTH][VTA_BLOCK_OUT]);
+  axi_T inp_mem[VTA_INP_BUFF_DEPTH][VTA_BATCH][INP_VEC_AXI_RATIO],
+  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][VTA_BLOCK_OUT][WGT_VEC_AXI_RATIO]);
 
 /*!
 * \brief Compute module.
@@ -161,15 +161,15 @@ void load(
 void compute(
   volatile uint32_t &done,
   volatile uop_T *uops,
-  volatile acc_vec_T *biases,
+  volatile axi_T *biases,
   hls::stream<insn_T> &gemm_queue,
   hls::stream<bool> &l2g_dep_queue,
   hls::stream<bool> &s2g_dep_queue,
   hls::stream<bool> &g2l_dep_queue,
   hls::stream<bool> &g2s_dep_queue,
-  out_vec_T inp_mem[VTA_INP_BUFF_DEPTH][VTA_BATCH],
-  wgt_vec_T wgt_mem[VTA_WGT_BUFF_DEPTH][VTA_BLOCK_OUT],
-  out_vec_T out_mem[VTA_ACC_BUFF_DEPTH][VTA_BATCH]);
+  axi_T inp_mem[VTA_INP_BUFF_DEPTH][VTA_BATCH][INP_VEC_AXI_RATIO],
+  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][VTA_BLOCK_OUT][WGT_VEC_AXI_RATIO],
+  axi_T out_mem[VTA_ACC_BUFF_DEPTH][VTA_BATCH][OUT_VEC_AXI_RATIO]);
 
 /*!
 * \brief Store module.
@@ -185,11 +185,11 @@ void compute(
 * \param out_mem Local output SRAM buffer. Read only single port BRAM.
 */
 void store(
-  volatile out_vec_T *outputs,
+  volatile axi_T *outputs,
   hls::stream<insn_T> &store_queue,
   hls::stream<bool> &g2s_dep_queue,
   hls::stream<bool> &s2g_dep_queue,
-  out_vec_T out_mem[VTA_ACC_BUFF_DEPTH][VTA_BATCH]);
+  axi_T out_mem[VTA_ACC_BUFF_DEPTH][VTA_BATCH][OUT_VEC_AXI_RATIO]);
 
 /*!
 * \brief VTA wrapper for simulation purpose only.
@@ -206,9 +206,9 @@ void vta(
   uint32_t insn_count,
   volatile insn_T *insns,
   volatile uop_T *uops,
-  volatile inp_vec_T *inputs,
-  volatile wgt_vec_T *weights,
-  volatile acc_vec_T *biases,
-  volatile out_vec_T *outputs);
+  volatile axi_T *inputs,
+  volatile axi_T *weights,
+  volatile axi_T *biases,
+  volatile axi_T *outputs);
 
 #endif  // VTA_VTA_H_

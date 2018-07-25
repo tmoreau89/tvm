@@ -10,6 +10,11 @@
 
 #include "vta.h"
 
+#define INP_TENSOR_ELEMS (VTA_BATCH * INP_VEC_AXI_RATIO)
+#define WGT_TENSOR_ELEMS (VTA_BLOCK_OUT * WGT_VEC_AXI_RATIO)
+#define ACC_TENSOR_ELEMS (VTA_BATCH * ACC_VEC_AXI_RATIO)
+#define OUT_TENSOR_ELEMS (VTA_BATCH * OUT_VEC_AXI_RATIO)
+
 void fetch(
   uint32_t insn_count,
   volatile insn_T *insns,
@@ -24,7 +29,7 @@ void fetch(
 #pragma HLS INTERFACE s_axilite port = return bundle = CONTROL_BUS
 
   INSN_DECODE: for (int pc = 0; pc < insn_count; pc++) {
-#pragma HLS PIPELINE II = 1
+#pragma HLS PIPELINE
     // Read instruction fields
     insn_T insn = insns[pc];
     // Do some partial decoding
@@ -42,14 +47,42 @@ void fetch(
   }
 }
 
+void reset_mem(
+  memop_sram_T &sram_idx,
+  memop_sram_T range,
+  memop_id_T memory_type,
+  axi_T inp_mem[VTA_INP_BUFF_DEPTH][INP_TENSOR_ELEMS],
+  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_TENSOR_ELEMS]
+  ) {
+
+  if (memory_type == VTA_MEM_ID_INP) {
+    for (int i = 0; i < range; i++) {
+#pragma HLS PIPELINE
+      for (int j = 0; j < INP_TENSOR_ELEMS; j++) {
+        inp_mem[sram_idx][j] = 0;
+      }
+      sram_idx++;
+    }
+  } else {
+    for (int i = 0; i < range; i++) {
+#pragma HLS PIPELINE
+      for (int j = 0; j < WGT_TENSOR_ELEMS; j++) {
+        wgt_mem[sram_idx][j] = 0;
+      }
+      sram_idx++;
+    }
+  }
+
+}
+
 void load(
-  volatile inp_vec_T *inputs,
-  volatile wgt_vec_T *weights,
+  volatile axi_T *inputs,
+  volatile axi_T *weights,
   hls::stream<insn_T> &load_queue,
   hls::stream<bool> &g2l_dep_queue,
   hls::stream<bool> &l2g_dep_queue,
-  inp_vec_T inp_mem[VTA_INP_BUFF_DEPTH][VTA_BATCH],
-  wgt_vec_T wgt_mem[VTA_WGT_BUFF_DEPTH][VTA_BLOCK_OUT]
+  axi_T inp_mem[VTA_INP_BUFF_DEPTH][INP_TENSOR_ELEMS],
+  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_TENSOR_ELEMS]
   ) {
 #pragma HLS INTERFACE m_axi port = weights offset = slave bundle = data_port
 #pragma HLS INTERFACE m_axi port = inputs offset = slave bundle = data_port
@@ -59,6 +92,8 @@ void load(
 #pragma HLS INTERFACE bram port = wgt_mem
 #pragma HLS INTERFACE bram port = inp_mem
 #pragma HLS INTERFACE s_axilite port = return bundle = CONTROL_BUS
+#pragma HLS RESOURCE variable = inp_mem core = RAM_1P
+#pragma HLS RESOURCE variable = wgt_mem core = RAM_1P
 
   // Pop load instruction
   insn_T insn = load_queue.read();
@@ -88,85 +123,59 @@ void load(
   memop_sram_T sram_idx = sram_base;
   memop_dram_T dram_idx = dram_base;
 
-  // Pre-compute dimensions, and offsets
-  memop_size_T y_size_total = y_pad_0 + y_size + y_pad_1;
-  memop_size_T x_size_total = x_pad_0 + x_size + x_pad_1;
-  memop_sram_T y_offset = x_size_total * y_pad_0;
-// Force this computation to be done with LUTs to avoid using too many DSPs
-#pragma HLS RESOURCE variable = y_offset core = Mul_LUT
+  // Pre-compute data and force to use no DSPs
+  memop_sram_T x_line = x_pad_0 + x_size + x_pad_1;
+  memop_sram_T y_offset_0 = x_line * y_pad_0;
+#pragma HLS RESOURCE variable = y_offset_0 core = Mul_LUT
+  memop_sram_T y_offset_1 = x_line * y_pad_1;
+#pragma HLS RESOURCE variable = y_offset_1 core = Mul_LUT
 
-  // Skip padding along y dimension
-  sram_idx += y_offset;
-
-  // Perform data transfer from DRAM
-  for (int y = 0; y < y_size; y++) {
-#pragma HLS PIPELINE rewind
-    // Skip padding along x dimension
-    sram_idx += x_pad_0;
-    // Perform data transfer
-    if (memory_type == VTA_MEM_ID_INP) {
+  // Skip top padding
+  sram_idx += y_offset_0;
+  if (memory_type == VTA_MEM_ID_INP) {
+    for (int y = 0; y < y_size; y++) {
+#pragma HLS PIPELINE
+      // Skip left padding
+      sram_idx += x_pad_0;
+      // Data transfer
       memcpy(&inp_mem[sram_idx][0],
-             (const inp_vec_T*) &inputs[dram_idx * VTA_BATCH],
+             (const axi_T*) &inputs[dram_idx * INP_TENSOR_ELEMS],
              x_size * VTA_INP_ELEM_BYTES);
-    } else {
-      memcpy(&wgt_mem[sram_idx][0],
-             (const wgt_vec_T*) &weights[dram_idx * VTA_BLOCK_OUT],
-             x_size * VTA_WGT_ELEM_BYTES);
-    }
-    sram_idx += x_size;
-    dram_idx += x_stride;
-    // Skip padding along x dimension
-    sram_idx += x_pad_1;
-  }
-
-  // Reset SRAM index
-  sram_idx = sram_base;
-  // Pad x/y edges with zeros
-  for (int y = 0; y < y_size_total; y++) {
-    if (y < y_pad_0 || y >= y_pad_0 + y_size) {
-      for (int x = 0; x < x_size_total; x++) {
-#pragma HLS PIPELINE II = 1 rewind
-        if (memory_type == VTA_MEM_ID_INP) {
-          for (int i = 0; i < VTA_BATCH; i++) {
-            inp_mem[sram_idx][i] = 0;
-          }
-        } else {
-          for (int i = 0; i < VTA_BLOCK_OUT; i++) {
-            wgt_mem[sram_idx][i] = 0;
-          }
-        }
-        sram_idx++;
-      }
-    } else {
-      for (int x = 0; x < x_pad_0; x++) {
-#pragma HLS PIPELINE II = 1 rewind
-        if (memory_type == VTA_MEM_ID_INP) {
-          for (int i = 0; i < VTA_BATCH; i++) {
-            inp_mem[sram_idx][i] = 0;
-          }
-        } else {
-          for (int i = 0; i < VTA_BLOCK_OUT; i++) {
-            wgt_mem[sram_idx][i] = 0;
-          }
-        }
-        sram_idx++;
-      }
       sram_idx += x_size;
-      for (int x = 0; x < x_pad_1; x++) {
-#pragma HLS PIPELINE II = 1 rewind
-        if (memory_type == VTA_MEM_ID_INP) {
-          for (int i = 0; i < VTA_BATCH; i++) {
-            inp_mem[sram_idx][i] = 0;
-          }
-        } else {
-          for (int i = 0; i < VTA_BLOCK_OUT; i++) {
-            wgt_mem[sram_idx][i] = 0;
-          }
-        }
-        sram_idx++;
-      }
+      dram_idx += x_stride;
+      // Skip right Padding
+      sram_idx += x_pad_1;
+    }
+  } else {
+    for (int y = 0; y < y_size; y++) {
+#pragma HLS PIPELINE
+      // Skip left padding
+      sram_idx += x_pad_0;
+      // Data transfer
+      memcpy(&wgt_mem[sram_idx][0],
+             (const axi_T*) &weights[dram_idx * WGT_TENSOR_ELEMS],
+             x_size * VTA_WGT_ELEM_BYTES);
+      sram_idx += x_size;
+      dram_idx += x_stride;
+      // Skip right Padding
+      sram_idx += x_pad_1;
     }
   }
+  // Reset Index
+  sram_idx = sram_base;
+
+  // Top padding
+  reset_mem(sram_idx, y_offset_0, memory_type, inp_mem, wgt_mem);
+  for (int y = 0; y < y_size; y++) {
+    // Left padding
+    reset_mem(sram_idx, x_pad_0, memory_type, inp_mem, wgt_mem);
+    // Skip line
+    sram_idx += x_size;
+    // Right Padding
+    reset_mem(sram_idx, x_pad_1, memory_type, inp_mem, wgt_mem);
+  }
+  // Bottom padding
+  reset_mem(sram_idx, y_offset_1, memory_type, inp_mem, wgt_mem);
 
   // Push dependence token if instructed
   if (push_next_dependence) {
@@ -177,15 +186,15 @@ void load(
 void compute(
   volatile uint32_t &done,
   volatile uop_T *uops,
-  volatile acc_vec_T *biases,
+  volatile axi_T *biases,
   hls::stream<insn_T> &gemm_queue,
   hls::stream<bool> &l2g_dep_queue,
   hls::stream<bool> &s2g_dep_queue,
   hls::stream<bool> &g2l_dep_queue,
   hls::stream<bool> &g2s_dep_queue,
-  inp_vec_T inp_mem[VTA_INP_BUFF_DEPTH][VTA_BATCH],
-  wgt_vec_T wgt_mem[VTA_WGT_BUFF_DEPTH][VTA_BLOCK_OUT],
-  out_vec_T out_mem[VTA_ACC_BUFF_DEPTH][VTA_BATCH]
+  axi_T inp_mem[VTA_INP_BUFF_DEPTH][INP_TENSOR_ELEMS],
+  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_TENSOR_ELEMS],
+  axi_T out_mem[VTA_ACC_BUFF_DEPTH][OUT_TENSOR_ELEMS]
   ) {
 #pragma HLS INTERFACE s_axilite port = done bundle = CONTROL_BUS
 #pragma HLS INTERFACE m_axi port = uops offset = slave bundle = uop_port
@@ -199,15 +208,18 @@ void compute(
 #pragma HLS INTERFACE bram port = wgt_mem
 #pragma HLS INTERFACE bram port = out_mem
 #pragma HLS INTERFACE s_axilite port = return bundle = CONTROL_BUS
-// This is necessary connect the SRAM to the load module
+#pragma HLS RESOURCE variable = inp_mem core = RAM_1P
 #pragma HLS RESOURCE variable = wgt_mem core = RAM_1P
+#pragma HLS RESOURCE variable = out_mem core = RAM_1P
 
   // Micro-op storage
   static uop_T uop_mem[VTA_UOP_BUFF_DEPTH];
 
   // Accumulator storage
-  static acc_vec_T acc_mem[VTA_ACC_BUFF_DEPTH][VTA_BATCH];
-#pragma HLS ARRAY_PARTITION variable = acc_mem complete dim = 2
+  static axi_T acc_mem[VTA_ACC_BUFF_DEPTH][ACC_TENSOR_ELEMS];
+// #pragma HLS ARRAY_PARTITION variable = acc_mem complete dim = 2
+// This is necessary to obtain II=1
+#pragma HLS DEPENDENCE variable = acc_mem inter false
 
   // Pop GEMM instruction
   insn_T insn = gemm_queue.read();
@@ -251,34 +263,20 @@ void compute(
     memop_sram_T sram_idx = sram_base;
     memop_dram_T dram_idx = dram_base;
 
-    // Pre-compute dimensions, and offsets
-    memop_size_T y_size_total = y_pad_0 + y_size + y_pad_1;
-    memop_size_T x_size_total = x_pad_0 + x_size + x_pad_1;
-    memop_sram_T y_offset = x_size_total * y_pad_0;
-// Force this computation to be done with LUTs to avoid using too many DSPs
-#pragma HLS RESOURCE variable = y_offset core = Mul_LUT
-
     if (memory_type == VTA_MEM_ID_UOP) {
       // Perform data transfer
       memcpy(&uop_mem[sram_base],
              (const uop_T*) &uops[dram_base],
              x_size * sizeof(uop_T));
     } else {
-      // Skip vertical padding
-      sram_idx += y_offset;
       // Perform data transfer from DRAM
       for (int y = 0; y < y_size; y++) {
-#pragma HLS PIPELINE rewind
-        // Skip padding along x dimension
-        sram_idx += x_pad_0;
         // Perform data transfer
         memcpy(&acc_mem[sram_idx][0],
-               (const acc_vec_T*) &biases[dram_idx * VTA_BATCH],
-               x_size*VTA_ACC_ELEM_BYTES);
+              (const axi_T*) &biases[dram_idx * ACC_TENSOR_ELEMS],
+              x_size * VTA_ACC_ELEM_BYTES);
         sram_idx += x_size;
         dram_idx += x_stride;
-        // Skip padding along x dimension
-        sram_idx += x_pad_1;
       }
     }
   } else if (opcode == VTA_OPCODE_GEMM || opcode == VTA_OPCODE_ALU) {
@@ -310,7 +308,6 @@ void compute(
 
     // Outer Loop
     EXE_OUT_LOOP: for (int it_out = 0; it_out < iter_out; it_out++) {
-#pragma HLS DEPENDENCE variable = acc_mem inter false
       acc_idx_T dst_offset_in = dst_offset_out;
       inp_idx_T src_offset_in = src_offset_out;
       wgt_idx_T wgt_offset_in = wgt_offset_out;
@@ -321,7 +318,6 @@ void compute(
         if (opcode == VTA_OPCODE_GEMM) {
           // Iterate over micro op
           READ_GEMM_UOP: for (int upc = uop_bgn; upc < uop_end; upc++) {
-#pragma HLS PIPELINE II = 1 rewind
 
             // Read micro-op fields
             uop_T uop = uop_mem[upc];
@@ -334,36 +330,56 @@ void compute(
             wgt_idx_T wgt_idx =
                 uop.range(VTA_UOP_GEM_2_1, VTA_UOP_GEM_2_0) + wgt_offset_in;
 
-            // Read weight matrix
-            wgt_vec_T w_matrix[VTA_BLOCK_OUT];
-            for (int i = 0; i < VTA_BLOCK_OUT; i++) {
-              w_matrix[i] = wgt_mem[wgt_idx][i];
+            // Read in weight tensor
+            wgt_T w_tensor[VTA_BLOCK_OUT][VTA_BLOCK_IN];
+            for (int oc = 0; oc < VTA_BLOCK_OUT; oc++) {
+              for (int p = 0; p < WGT_VEC_AXI_RATIO; p++) {
+                axi_T packet = wgt_mem[wgt_idx][oc * WGT_VEC_AXI_RATIO + p];
+                for (int w = 0; w < AXI_WGT_RATIO; w++) {
+                  w_tensor[oc][p * AXI_WGT_RATIO + w] =
+                      packet.range((w + 1) * VTA_WGT_WIDTH - 1, w * VTA_WGT_WIDTH);
+                }
+              }
             }
-            // Read input matrix and accum matrix
-            acc_vec_T o_matrix[VTA_BATCH];
-            inp_vec_T i_matrix[VTA_BATCH];
-            for (int i = 0; i < VTA_BATCH; i++) {
-              o_matrix[i] = acc_mem[dst_idx][i];
-              i_matrix[i] = inp_mem[src_idx][i];
+
+            // Read in input tensor
+            inp_T i_tensor[VTA_BATCH][VTA_BLOCK_IN];
+            for (int b = 0; b < VTA_BATCH; b++) {
+              for (int p = 0; p < INP_VEC_AXI_RATIO; p++) {
+                axi_T packet = inp_mem[src_idx][b * INP_VEC_AXI_RATIO + p];
+                for (int w = 0; w < AXI_INP_RATIO; w++) {
+                  i_tensor[b][p * AXI_INP_RATIO + w] =
+                      packet.range((w + 1) * VTA_INP_WIDTH - 1, w * VTA_INP_WIDTH);
+                }
+              }
             }
-            // Result matrices
-            acc_vec_T acc_mem_val[VTA_BATCH];
-            out_vec_T st_buf_val[VTA_BATCH];
+
+            // Read in accum tensor
+            acc_T a_tensor[VTA_BATCH][VTA_BLOCK_OUT];
+            for (int b = 0; b < VTA_BATCH; b++) {
+              for (int p = 0; p < ACC_VEC_AXI_RATIO; p++) {
+                axi_T packet = acc_mem[dst_idx][b * ACC_VEC_AXI_RATIO + p];
+                for (int w = 0; w < AXI_ACC_RATIO; w++) {
+                  a_tensor[b][p * AXI_ACC_RATIO + w] =
+                      packet.range((w + 1) * VTA_ACC_WIDTH - 1, w * VTA_ACC_WIDTH);
+                }
+              }
+            }
+
+            // Output tensor
+            out_T o_tensor[VTA_BATCH][VTA_BLOCK_OUT];
 
             // Inner GEMM loop
-            for (int i = 0; i < VTA_BATCH; i++) {
-              for (int b = 0; b < VTA_BLOCK_OUT; b++) {
+            for (int b = 0; b < VTA_BATCH; b++) {
+              for (int oc = 0; oc < VTA_BLOCK_OUT; oc++) {
                 // Initialize the accumulator values
-                acc_T accum =
-                  o_matrix[i].range((b + 1) * VTA_ACC_WIDTH - 1, b * VTA_ACC_WIDTH);
+                acc_T accum = a_tensor[b][oc];
                 // Dot product sum
                 sum_T tmp = 0;
                 // Inner matrix multiplication loop (input channel/feature)
-                for (int k = 0; k < VTA_BLOCK_IN; k++) {
-                  wgt_T w_elem =
-                      w_matrix[b].range((k + 1) * VTA_WGT_WIDTH - 1, k * VTA_WGT_WIDTH);
-                  inp_T i_elem =
-                      i_matrix[i].range((k + 1) * VTA_INP_WIDTH - 1, k * VTA_INP_WIDTH);
+                for (int ic = 0; ic < VTA_BLOCK_IN; ic++) {
+                  wgt_T w_elem = w_tensor[oc][ic];
+                  inp_T i_elem = i_tensor[b][ic];
                   mul_T prod = i_elem * w_elem;
 #ifdef NO_DSP
 #pragma HLS RESOURCE variable = prod core = Mul_LUT
@@ -372,15 +388,33 @@ void compute(
                 }
                 // Update summation
                 accum += (acc_T) tmp;
-                // Update result vector
-                acc_mem_val[i].range((b + 1) * VTA_ACC_WIDTH - 1, b * VTA_ACC_WIDTH) =
-                    reset_out ? (acc_T) 0 : accum;
-                st_buf_val[i].range((b + 1) * VTA_OUT_WIDTH - 1, b * VTA_OUT_WIDTH) =
-                    (out_T) accum.range(VTA_OUT_WIDTH - 1, 0);
+                // Write back result acc_mem
+                a_tensor[b][oc] = reset_out ? (acc_T) 0 : accum;
+                // And output vector
+                o_tensor[b][oc] = (out_T) accum.range(VTA_OUT_WIDTH - 1, 0);
               }
-              // Write to buffers
-              acc_mem[dst_idx][i] = acc_mem_val[i];
-              out_mem[dst_idx][i] = st_buf_val[i];
+            }
+
+            // Write the results back into accumulator
+            for (int b = 0; b < VTA_BATCH; b++) {
+              for (int p = 0; p < ACC_VEC_AXI_RATIO; p++) {
+                axi_T packet = 0;
+                for (int w = 0; w < AXI_ACC_RATIO; w++) {
+                  packet.range((w + 1) * VTA_ACC_WIDTH - 1, w * VTA_ACC_WIDTH) = a_tensor[b][p * AXI_ACC_RATIO + w];
+                }
+                acc_mem[dst_idx][b * ACC_VEC_AXI_RATIO + p] = packet;
+              }
+            }
+
+            // Write the results back in the output buffer
+            for (int b = 0; b < VTA_BATCH; b++) {
+              for (int p = 0; p < OUT_VEC_AXI_RATIO; p++) {
+                axi_T packet = 0;
+                for (int w = 0; w < AXI_OUT_RATIO; w++) {
+                  packet.range((w + 1) * VTA_OUT_WIDTH - 1, w * VTA_OUT_WIDTH) = o_tensor[b][p * AXI_OUT_RATIO + w];
+                }
+                out_mem[dst_idx][b * OUT_VEC_AXI_RATIO + p] = packet;
+              }
             }
           }
         }
@@ -397,59 +431,76 @@ void compute(
             acc_idx_T src_idx =
                 uop.range(VTA_UOP_ALU_1_1, VTA_UOP_ALU_1_0) + src_offset_in;
 
+            // Read in src tensor
+            acc_T src_tensor[VTA_BATCH][VTA_BLOCK_OUT];
+            for (int b = 0; b < VTA_BATCH; b++) {
+              for (int p = 0; p < ACC_VEC_AXI_RATIO; p++) {
+                axi_T packet = acc_mem[src_idx][b * ACC_VEC_AXI_RATIO + p];
+                for (int w = 0; w < AXI_ACC_RATIO; w++) {
+                  src_tensor[b][p * AXI_ACC_RATIO + w] =
+                      packet.range((w + 1) * VTA_ACC_WIDTH - 1, w * VTA_ACC_WIDTH);
+                }
+              }
+            }
+
+            // Read in dst tensor
+            acc_T dst_tensor[VTA_BATCH][VTA_BLOCK_OUT];
+            for (int b = 0; b < VTA_BATCH; b++) {
+              for (int p = 0; p < ACC_VEC_AXI_RATIO; p++) {
+                axi_T packet = acc_mem[dst_idx][b * ACC_VEC_AXI_RATIO + p];
+                for (int w = 0; w < AXI_ACC_RATIO; w++) {
+                  dst_tensor[b][p * AXI_ACC_RATIO + w] =
+                      packet.range((w + 1) * VTA_ACC_WIDTH - 1, w * VTA_ACC_WIDTH);
+                }
+              }
+            }
+
+            // Output tensor
+            out_T o_tensor[VTA_BATCH][VTA_BLOCK_OUT];
+
             // Perform ALU op over matrix elements
             for (int i = 0; i < VTA_BATCH; i++) {
-              // Read input matrix and accum matrix
-              acc_vec_T dst_vector = acc_mem[dst_idx][i];
-              acc_vec_T src_vector = acc_mem[src_idx][i];
-              // Result matrices
-              acc_vec_T cmp_res;
-              acc_vec_T add_res;
-              acc_vec_T shr_res;
-              out_vec_T short_cmp_res;
-              out_vec_T short_add_res;
-              out_vec_T short_shr_res;
-              // Results vector
-              acc_vec_T res_vec = 0;
               for (int b = 0; b < VTA_BLOCK_OUT; b++) {
-#pragma HLS PIPELINE II = 1 rewind
                 // Read in operands
-                acc_T src_0 = dst_vector.range((b + 1) * VTA_ACC_WIDTH - 1, b * VTA_ACC_WIDTH);
-                acc_T src_1 = use_imm ?
-                    (acc_T) imm :
-                    src_vector.range((b + 1) * VTA_ACC_WIDTH - 1, b * VTA_ACC_WIDTH);
+                acc_T src_0 = dst_tensor[i][b];
+                acc_T src_1 = use_imm ? (acc_T) imm : src_tensor[i][b];
                 // Compute Min/Max
                 acc_T mix_val = src_0 < src_1 ?
                     (alu_opcode == VTA_ALU_OPCODE_MIN ? src_0 : src_1) :
                     (alu_opcode == VTA_ALU_OPCODE_MIN ? src_1 : src_0);
-                cmp_res.range((b + 1) * VTA_ACC_WIDTH - 1, b * VTA_ACC_WIDTH) = mix_val;
-                short_cmp_res.range((b + 1) * VTA_OUT_WIDTH - 1, b * VTA_OUT_WIDTH) =
-                    (out_T) mix_val.range(VTA_OUT_WIDTH - 1, 0);
+                dst_tensor[i][b] = mix_val;
+                o_tensor[i][b] = (out_T) mix_val.range(VTA_OUT_WIDTH - 1, 0);
                 // Compute Sum
                 acc_T add_val =
                     src_0.range(VTA_ACC_WIDTH - 1, 0) + src_1.range(VTA_ACC_WIDTH - 1, 0);
-                add_res.range((b + 1) * VTA_ACC_WIDTH - 1, b * VTA_ACC_WIDTH) = add_val;
-                short_add_res.range((b + 1) * VTA_OUT_WIDTH - 1, b * VTA_OUT_WIDTH) =
-                    (out_T) add_val.range(VTA_OUT_WIDTH - 1, 0);
+                dst_tensor[i][b] = add_val;
+                o_tensor[i][b] = (out_T) add_val.range(VTA_OUT_WIDTH - 1, 0);
                 // Compute Shift Right
-                acc_T shr_val =
-                    src_0 >> (aluop_sh_imm_T) src_1.range(VTA_LOG_ACC_WIDTH - 1, 0);
-                shr_res.range((b + 1) * VTA_ACC_WIDTH - 1, b * VTA_ACC_WIDTH) = shr_val;
-                short_shr_res.range((b + 1) * VTA_OUT_WIDTH - 1, b * VTA_OUT_WIDTH) =
-                    (out_T) shr_val.range(VTA_OUT_WIDTH-1, 0);
+                acc_T shr_val = src_0 >> (aluop_sh_imm_T) src_1.range(VTA_LOG_ACC_WIDTH - 1, 0);
+                dst_tensor[i][b] = shr_val;
+                o_tensor[i][b] = (out_T) shr_val.range(VTA_OUT_WIDTH-1, 0);
               }
+            }
 
-              // Store to accum memory/store buffer
-              if (alu_opcode == VTA_ALU_OPCODE_MIN ||
-                  alu_opcode == VTA_ALU_OPCODE_MAX) {
-                acc_mem[dst_idx][i] = cmp_res;
-                out_mem[dst_idx][i] = short_cmp_res;
-              } else if (alu_opcode == VTA_ALU_OPCODE_ADD) {
-                acc_mem[dst_idx][i] = add_res;
-                out_mem[dst_idx][i] = short_add_res;
-              } else if (alu_opcode == VTA_ALU_OPCODE_SHR) {
-                acc_mem[dst_idx][i] = shr_res;
-                out_mem[dst_idx][i] = short_shr_res;
+            // Write the results back into accumulator
+            for (int b = 0; b < VTA_BATCH; b++) {
+              for (int p = 0; p < ACC_VEC_AXI_RATIO; p++) {
+                axi_T packet = 0;
+                for (int w = 0; w < AXI_ACC_RATIO; w++) {
+                  packet.range((w + 1) * VTA_ACC_WIDTH - 1, w * VTA_ACC_WIDTH) = a_tensor[b][p * AXI_ACC_RATIO + w];
+                }
+                acc_mem[dst_idx][b * ACC_VEC_AXI_RATIO + p] = packet;
+              }
+            }
+
+            // Write the results back in the output buffer
+            for (int b = 0; b < VTA_BATCH; b++) {
+              for (int p = 0; p < OUT_VEC_AXI_RATIO; p++) {
+                axi_T packet = 0;
+                for (int w = 0; w < AXI_OUT_RATIO; w++) {
+                  packet.range((w + 1) * VTA_OUT_WIDTH - 1, w * VTA_OUT_WIDTH) = o_tensor[b][p * AXI_OUT_RATIO + w];
+                }
+                out_mem[dst_idx][b * OUT_VEC_AXI_RATIO + p] = packet;
               }
             }
           }
@@ -479,11 +530,11 @@ void compute(
 }
 
 void store(
-  volatile out_vec_T *outputs,
+  volatile axi_T *outputs,
   hls::stream<insn_T> &store_queue,
   hls::stream<bool> &g2s_dep_queue,
   hls::stream<bool> &s2g_dep_queue,
-  out_vec_T out_mem[VTA_ACC_BUFF_DEPTH][VTA_BATCH]
+  axi_T out_mem[VTA_ACC_BUFF_DEPTH][OUT_TENSOR_ELEMS]
   ) {
 #pragma HLS INTERFACE m_axi port = outputs offset = slave bundle = data_port
 #pragma HLS INTERFACE axis port = store_queue
@@ -491,6 +542,7 @@ void store(
 #pragma HLS INTERFACE axis port = s2g_dep_queue
 #pragma HLS INTERFACE bram port = out_mem
 #pragma HLS INTERFACE s_axilite port = return bundle = CONTROL_BUS
+#pragma HLS RESOURCE variable = out_mem core = RAM_1P
 
   // Load buffer
   insn_T insn = store_queue.read();
@@ -520,26 +572,17 @@ void store(
   memop_sram_T sram_idx = sram_base;
   memop_dram_T dram_idx = dram_base;
 
-  // Skip padding along y dimension
-  memop_sram_T y_offset = (x_pad_0 + x_size + x_pad_1) * y_pad_0;
-  sram_idx += y_offset;
-// Force this computation to be done with LUTs to avoid using too many DSPs
-#pragma HLS RESOURCE variable = y_offset core = Mul_LUT
-
   // Copy along y dimension
   for (int y = 0; y < y_size; y++) {
-#pragma HLS PIPELINE rewind
-    // Skip padding along x dimension
-    sram_idx += x_pad_0;
+#pragma HLS PIPELINE
     // Perform data transfer
     memcpy(
-      const_cast<out_vec_T*>(&outputs[dram_idx*VTA_BATCH]),
-      (const out_vec_T*) &out_mem[sram_idx][0],
-      x_size * VTA_INP_ELEM_BYTES);
+      const_cast<axi_T*>(&outputs[dram_idx * OUT_TENSOR_ELEMS]),
+      (const axi_T*) &out_mem[sram_idx][0],
+      x_size * VTA_OUT_ELEM_BYTES);
+#pragma HLS RESOURCE variable = sram_idx core = Mul_LUT
     sram_idx += x_size;
     dram_idx += x_stride;
-    // Skip padding along x dimension
-    sram_idx += x_pad_1;
   }
 
   // Push dependence token if instructed
@@ -552,10 +595,10 @@ void vta(
   uint32_t insn_count,
   volatile insn_T *insns,
   volatile uop_T *uops,
-  volatile inp_vec_T *inputs,
-  volatile wgt_vec_T *weights,
-  volatile acc_vec_T *biases,
-  volatile out_vec_T *outputs) {
+  volatile axi_T *inputs,
+  volatile axi_T *weights,
+  volatile axi_T *biases,
+  volatile axi_T *outputs) {
 #pragma HLS INTERFACE s_axilite port = insn_count bundle = CONTROL_BUS
 #pragma HLS INTERFACE m_axi port = insns offset = slave bundle = ins_port
 #pragma HLS INTERFACE m_axi port = uops offset = slave bundle = uop_port
@@ -582,9 +625,9 @@ void vta(
   hls::stream<bool> g2s_dep_queue;
 
   // Instantiate memories
-  inp_vec_T inp_mem[VTA_INP_BUFF_DEPTH][VTA_BATCH];
-  wgt_vec_T wgt_mem[VTA_WGT_BUFF_DEPTH][VTA_BLOCK_OUT];
-  out_vec_T out_mem[VTA_ACC_BUFF_DEPTH][VTA_BATCH];
+  axi_T inp_mem[VTA_INP_BUFF_DEPTH][INP_TENSOR_ELEMS];
+  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_TENSOR_ELEMS];
+  axi_T out_mem[VTA_ACC_BUFF_DEPTH][OUT_TENSOR_ELEMS];
 
   // Push all instructions into the queues
   fetch(insn_count, insns, tmp_load_queue, tmp_gemm_queue, tmp_store_queue);

@@ -76,13 +76,23 @@ template <typename T, int T_WIDTH>
 void unpackBuffer(T **dst, T *src, int y_size, int x_size, int y_block, int x_block);
 
 /*!
-* \brief Allocates and initializes a 2D array in the heap.
+* \brief Allocates and randomly initializes a 2D array in the heap.
 * \param rows Number of rows.
 * \param cols Number of columns.
 * \return Pointer to the 2D array.
 */
-template <typename T, int T_WIDTH>
+template <typename T>
 T ** allocInit2dArray(int rows, int cols);
+
+/*!
+* \brief Allocates and initializes a 2D array to a set value in the heap.
+* \param rows Number of rows.
+* \param cols Number of columns.
+* \param val Value to set the whole array to.
+* \return Pointer to the 2D array.
+*/
+template <typename T>
+T ** allocSet2dArray(int rows, int cols, int val);
 
 /*!
 * \brief Allocates a 2D array in the heap.

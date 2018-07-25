@@ -13,6 +13,9 @@ extern "C" {
 
 #include <stdint.h>
 
+/*! AXI bus width */
+#define VTA_AXI_WIDTH 64
+
 /*! log2 of instruction data type width */
 #define VTA_LOG_INS_WIDTH 7
 /*! Instruction data type width */
@@ -69,6 +72,8 @@ extern "C" {
 #define VTA_WGT_ELEM_BYTES (VTA_BLOCK_OUT * VTA_BLOCK_IN * VTA_WGT_WIDTH / 8)
 /*! Size of accumulator buffer element in B*/
 #define VTA_ACC_ELEM_BYTES (VTA_BATCH * VTA_BLOCK_OUT * VTA_ACC_WIDTH / 8)
+/*! Size of output buffer element in B*/
+#define VTA_OUT_ELEM_BYTES (VTA_BATCH * VTA_BLOCK_OUT * VTA_OUT_WIDTH / 8)
 
 /*! On-chip micro-op buffer depth */
 #define VTA_UOP_BUFF_DEPTH (VTA_UOP_BUFF_SIZE / VTA_UOP_ELEM_BYTES)
