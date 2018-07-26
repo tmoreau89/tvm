@@ -22,7 +22,7 @@ SLURM = false
 # Prevent generation of DSP
 NO_DSP = false
 # Prevent generation of ALU
-NO_ALU = false
+NO_ALU = true
 
 # Process VTA JSON config
 VTA_CONFIG = python $(CURDIR)/../../config/vta_config.py
