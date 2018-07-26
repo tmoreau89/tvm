@@ -10,11 +10,6 @@
 
 #include "vta.h"
 
-#define INP_TENSOR_ELEMS (VTA_BATCH * INP_VEC_AXI_RATIO)
-#define WGT_TENSOR_ELEMS (VTA_BLOCK_OUT * WGT_VEC_AXI_RATIO)
-#define ACC_TENSOR_ELEMS (VTA_BATCH * ACC_VEC_AXI_RATIO)
-#define OUT_TENSOR_ELEMS (VTA_BATCH * OUT_VEC_AXI_RATIO)
-
 void fetch(
   uint32_t insn_count,
   volatile insn_T *insns,
