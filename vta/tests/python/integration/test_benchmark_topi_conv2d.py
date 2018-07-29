@@ -12,6 +12,42 @@ import numpy as np
 
 Workload = vta.top.vta_conv2d.Workload
 
+
+def _sign_extend(value, bits):
+    sign_bit = 1 << (bits - 1)
+    return (value & (sign_bit - 1)) - (value & sign_bit)
+
+def _pack(x, width):
+    assert(len(x.shape)==6)
+    assert(x.dtype=="int8")
+    pack_factor = 8 // width
+    mask = ((1 << width) - 1)
+
+    s = x.shape
+    s_reshape = s[:-1] + (s[-1] // pack_factor, pack_factor)
+    s_pack = s[:-1] + (s[-1] // pack_factor,)
+    x_reshape = x.reshape(s_reshape)
+    x_packed = np.zeros(s_pack, dtype="int8")
+    for i in range(0, pack_factor):
+        x_packed |= (x_reshape[:,:,:,:,:,:,i] & mask) << (i * width)
+
+    return x_packed
+
+def _unpack(x, width):
+    assert(len(x.shape)==4)
+    assert(x.dtype=="int8")
+    pack_factor = 8 // width
+    mask = ((1 << width) - 1)
+
+    vse = np.vectorize(_sign_extend)
+
+    s = x.shape
+    x_unpack = np.zeros((s[0], s[1], s[2], s[3], pack_factor), dtype=x.dtype)
+    for i in range(0, pack_factor):
+        x_unpack[:,:,:,:,i] = vse(((x >> (i * width)) & mask), width)
+
+    return x_unpack.reshape(s[0], s[1], s[2], s[3]*pack_factor)
+
 @tvm.tag_scope(tag=topi.tag.ELEMWISE)
 def my_clip(x, a_min, a_max):
     """Unlike topi's current clip, put min and max into two stages."""
@@ -33,7 +69,6 @@ def test_cpu_conv2d():
         res_conv = topi.nn.conv2d(
             data, kernel, padding=(wl.hpad, wl.wpad),
             strides=(wl.hstride, wl.wstride),
-            dilation=(1, 1),
             out_dtype="int32")
         res = topi.right_shift(res_conv, 8)
         res = my_clip(res, 0, 127)
@@ -88,7 +123,7 @@ def test_cpu_conv2d():
                 padding = wl.hpad
                 res_ref = res_ref >> 8
                 res_ref = np.clip(res_ref, 0, 127).astype("int8")
-                tvm.testing.assert_allclose(res_unpack, res_ref)
+                np.testing.assert_allclose(res_unpack, res_ref)
             return cost
 
         def conv_normal(print_ir):
@@ -150,10 +185,11 @@ def test_vta_conv2d():
 
         res_conv = vta.top.packed_conv2d(
             data, kernel, padding=(wl.hpad, wl.wpad), strides=(wl.hstride, wl.wstride))
-        res = topi.right_shift(res_conv, 8)
-        res = topi.add(res, bias)
-        res = my_clip(res, 0, 127)
-        res = topi.cast(res, "int8")
+        # res = topi.right_shift(res_conv, 8)
+        # res = topi.add(res, bias)
+        # res = my_clip(res, 0, 127)
+        # res = topi.cast(res, "int8")
+        res = topi.cast(res_conv, env.out_dtype)
 
         # To compute number of ops, use a x2 factor for FMA
         num_ops = 2 * batch_size * fout_height * fout_width * wl.hkernel * wl.wkernel * wl.out_filter * wl.in_filter
@@ -167,10 +203,30 @@ def test_vta_conv2d():
         assert wl.hpad == wl.wpad
         padding = wl.hpad
 
-        @memoize("vta.tests.test_benchmark_topi.conv2d.verify_nhwc")
+        # Handle packing for quantized weights (less than 8bits)
+        w_pack_factor = 1 << (3 - env.LOG_WGT_WIDTH)
+        kernel_shape_pack = (wl.out_filter//env.BLOCK_OUT, wl.in_filter//env.BLOCK_IN,
+                             wl.hkernel, wl.wkernel, env.BLOCK_OUT, env.BLOCK_IN//w_pack_factor)
+        kernel_arg_buffer = tvm.decl_buffer(
+            kernel_shape_pack,
+            dtype="int8", name="kernel_arg")
+        kernel_bind_buffer = tvm.decl_buffer(
+            kernel.shape, kernel.dtype, name=kernel.op.name,
+            data=kernel_arg_buffer.data)
+        binds = {kernel: kernel_bind_buffer}
+
+        # @memoize("vta.tests.test_benchmark_topi.conv2d.verify_nhwc")
         def get_ref_data():
-            a_np = (np.random.uniform(size=a_shape) * 4).astype(data_dtype)
-            w_np = (np.random.uniform(size=w_shape) * 4).astype(kernel_dtype)
+            # derive min max for input and weight types (max non inclusive)
+            a_width = 1 << (env.LOG_INP_WIDTH)
+            w_width = 1 << (env.LOG_WGT_WIDTH)
+            a_min, a_max = 0 - (1 << (a_width - 1)), (1 << (a_width - 1))
+            w_min, w_max = 0 - (1 << (w_width - 1)), (1 << (w_width - 1))
+            a_np = np.random.randint(
+                a_min, a_max, size=a_shape).astype(data_dtype)
+            w_np = np.random.randint(
+                w_min, w_max, size=w_shape).astype("int8")
+            # TODO: investigate data packing bug when act/wgts are negative
             a_np = np.abs(a_np)
             w_np = np.abs(w_np)
             b_np = topi.testing.conv2d_nchw_python(
@@ -178,8 +234,8 @@ def test_vta_conv2d():
             return a_np, w_np, b_np
 
         def verify(s, check_correctness):
-            mod = vta.build(s, [data, kernel, bias, res], "ext_dev",
-                            env.target_host, name="conv2d")
+            mod = vta.build(s, [data, kernel_arg_buffer, bias, res], "ext_dev",
+                            env.target_host, name="conv2d", binds=binds)
             temp = util.tempdir()
 
             mod.save(temp.relpath("conv2d.o"))
@@ -204,9 +260,13 @@ def test_vta_conv2d():
                 1, wl.out_filter // env.BLOCK_OUT, 1, 1, env.BATCH, env.BLOCK_OUT)
             res_shape = topi.util.get_const_tuple(res.shape)
 
+            # Quantized packing
+            kernel_qpacked = _pack(kernel_packed, env.WGT_WIDTH)
+
             res_np = np.zeros(res_shape).astype(res.dtype)
             data_arr = tvm.nd.array(data_packed, ctx)
-            kernel_arr = tvm.nd.array(kernel_packed, ctx)
+            # kernel_arr = tvm.nd.array(kernel_packed, ctx)
+            kernel_arr = tvm.nd.array(kernel_qpacked, ctx)
             bias_arr = tvm.nd.array(bias_packed, ctx)
             res_arr = tvm.nd.array(res_np, ctx)
             time_f = f.time_evaluator("conv2d", ctx, number=5)
@@ -217,10 +277,11 @@ def test_vta_conv2d():
                 assert wl.hpad == wl.wpad
                 stride = (wl.hstride, wl.wstride)
                 padding = wl.hpad
-                res_ref = res_ref >> 8
-                res_ref += bias_orig.reshape(wl.out_filter, 1, 1)
-                res_ref = np.clip(res_ref, 0, 127).astype("int8")
-                tvm.testing.assert_allclose(res_unpack, res_ref)
+                # res_ref = res_ref >> 8
+                # res_ref += bias_orig.reshape(wl.out_filter, 1, 1)
+                # res_ref = np.clip(res_ref, 0, 127).astype("int8")
+                res_ref = res_ref.astype("int8")
+                np.testing.assert_allclose(res_unpack, res_ref)
             return cost
 
         def conv_normal(print_ir):
@@ -239,18 +300,18 @@ def test_vta_conv2d():
         # ResNet18 workloads
         resnet = {
             # Workloads of resnet18 on imagenet
-            0: Workload(1, 224, 224, 16, 64, 7, 7, 3, 3, 2, 2),
-            1: Workload(1, 56, 56, 64, 64, 3, 3, 1, 1, 1, 1),
-            2: Workload(1, 56, 56, 64, 64, 1, 1, 0, 0, 1, 1),
-            3: Workload(1, 56, 56, 64, 128, 3, 3, 1, 1, 2, 2),
-            4: Workload(1, 56, 56, 64, 128, 1, 1, 0, 0, 2, 2),
-            5: Workload(1, 28, 28, 128, 128, 3, 3, 1, 1, 1, 1),
-            6: Workload(1, 28, 28, 128, 256, 3, 3, 1, 1, 2, 2),
-            7: Workload(1, 28, 28, 128, 256, 1, 1, 0, 0, 2, 2),
-            8: Workload(1, 14, 14, 256, 256, 3, 3, 1, 1, 1, 1),
-            9: Workload(1, 14, 14, 256, 512, 3, 3, 1, 1, 2, 2),
-            10: Workload(1, 14, 14, 256, 512, 1, 1, 0, 0, 2, 2),
-            11: Workload(1, 7, 7, 512, 512, 3, 3, 1, 1, 1, 1),
+            0: Workload(env.BATCH, 224, 224, env.BLOCK_IN, 64, 7, 7, 3, 3, 2, 2),
+            1: Workload(env.BATCH, 56, 56, 64, 64, 3, 3, 1, 1, 1, 1),
+            2: Workload(env.BATCH, 56, 56, 64, 64, 1, 1, 0, 0, 1, 1),
+            3: Workload(env.BATCH, 56, 56, 64, 128, 3, 3, 1, 1, 2, 2),
+            4: Workload(env.BATCH, 56, 56, 64, 128, 1, 1, 0, 0, 2, 2),
+            5: Workload(env.BATCH, 28, 28, 128, 128, 3, 3, 1, 1, 1, 1),
+            6: Workload(env.BATCH, 28, 28, 128, 256, 3, 3, 1, 1, 2, 2),
+            7: Workload(env.BATCH, 28, 28, 128, 256, 1, 1, 0, 0, 2, 2),
+            8: Workload(env.BATCH, 14, 14, 256, 256, 3, 3, 1, 1, 1, 1),
+            9: Workload(env.BATCH, 14, 14, 256, 512, 3, 3, 1, 1, 2, 2),
+            10: Workload(env.BATCH, 14, 14, 256, 512, 1, 1, 0, 0, 2, 2),
+            11: Workload(env.BATCH, 7, 7, 512, 512, 3, 3, 1, 1, 1, 1),
         }
 
         batch_size = 1
@@ -265,5 +326,5 @@ def test_vta_conv2d():
 
 
 if __name__ == "__main__":
-    test_cpu_conv2d()
+    # test_cpu_conv2d()
     test_vta_conv2d()

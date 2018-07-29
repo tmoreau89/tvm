@@ -172,8 +172,6 @@ def packed_conv2d(data,
 
     ishape = topi.util.get_const_tuple(data.shape)
     kshape = topi.util.get_const_tuple(kernel.shape)
-    assert data.dtype == "int8", data.dtype
-    assert kernel.dtype == "int8", kernel.dtype
     d_i = tvm.reduce_axis((0, kshape[2]), name='d_i')
     d_j = tvm.reduce_axis((0, kshape[3]), name='d_j')
     k_o = tvm.reduce_axis((0, ishape[1]), name='k_o')
