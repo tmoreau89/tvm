@@ -317,8 +317,6 @@ def _get_workload(data, pad_data, kernel, output):
     w_str = (i_w + w_pad*2 - k_w) // (o_w - 1)
     return Workload(i_b, i_h, i_w, i_c, o_c, k_h, k_w, h_pad, w_pad, h_str, w_str)
 
-_WL2PLAN = {}
-
 def schedule_packed_conv2d(outs):
     """ Schedule the packed conv2d.
     """
@@ -355,11 +353,8 @@ def schedule_packed_conv2d(outs):
     else:
         pad_data = None
     wrkld = _get_workload(data, pad_data, kernel, output)
-    if wrkld in _WL2PLAN:
-        plan = _WL2PLAN[wrkld]
-    else:
-        plan = find_schedules(wrkld, vt_only=True, best_only=True)[0]
-        logging.info("Trying to find plan for %s", wrkld)
+    plan = find_schedules(wrkld, vt_only=True, best_only=True)[0]
+    logging.info("Trying to find plan for %s", wrkld)
     env = get_env()
 
     load_inp = load_wgt = load_out = store_out = env.dma_copy
@@ -388,6 +383,7 @@ def schedule_packed_conv2d(outs):
     for op in ewise_ops:
         s[op].set_scope(env.acc_scope)
         s[op].pragma(s[op].op.axis[0], alu)
+
 
     # tile
     oc_factor = (plan.oc_factor if plan.oc_factor
@@ -467,23 +463,3 @@ class Conv2DSchedule(object):
             self.oc_nthread, self.h_nthread)
 
 Schedule = Conv2DSchedule
-
-# Layer description of the ResNet18
-RESNET = {
-    0: Workload(1, 224, 224, 16, 64, 7, 7, 3, 3, 2, 2),
-    1: Workload(1, 56, 56, 64, 64, 3, 3, 1, 1, 1, 1),
-    2: Workload(1, 56, 56, 64, 64, 1, 1, 0, 0, 1, 1),
-    3: Workload(1, 56, 56, 64, 128, 3, 3, 1, 1, 2, 2),
-    4: Workload(1, 56, 56, 64, 128, 1, 1, 0, 0, 2, 2),
-    5: Workload(1, 28, 28, 128, 128, 3, 3, 1, 1, 1, 1),
-    6: Workload(1, 28, 28, 128, 256, 3, 3, 1, 1, 2, 2),
-    7: Workload(1, 28, 28, 128, 256, 1, 1, 0, 0, 2, 2),
-    8: Workload(1, 14, 14, 256, 256, 3, 3, 1, 1, 1, 1),
-    9: Workload(1, 14, 14, 256, 512, 3, 3, 1, 1, 2, 2),
-    10: Workload(1, 14, 14, 256, 512, 1, 1, 0, 0, 2, 2),
-    11: Workload(1, 7, 7, 512, 512, 3, 3, 1, 1, 1, 1),
-}
-
-for idx in RESNET:
-    scheds = find_schedules(RESNET[idx], vt_only=True, best_only=True)[0]
-    _WL2PLAN[RESNET[idx]] = scheds
