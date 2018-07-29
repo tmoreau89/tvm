@@ -137,7 +137,7 @@ def find_schedules(layer, vt_only=False, best_only=False):
                 valid &= (vt_only and (h_t == 2 or co_t == 2)) or not vt_only
                 # Check that we don't exceed input/weight/output capacity
                 valid &= input_tile_elems * inp_elem_sizeb <= inp_brams_sizeb // (co_t * h_t)
-                valid &= weight_tile_elems * wgt_elem_sizeb <= wgt_brams_sizeb
+                valid &= weight_tile_elems * wgt_elem_sizeb <= wgt_brams_sizeb // (co_t * h_t)
                 valid &= output_tile_elems * out_elem_sizeb <= out_brams_sizeb // (co_t * h_t)
                 # Make sure that we don't write to the same acc location within 2 consecutive cycles
                 valid &= h_f > 2 and w_f > 2
