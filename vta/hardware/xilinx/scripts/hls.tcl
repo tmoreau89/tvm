@@ -147,9 +147,9 @@ proc init_design {per ii inp_width wgt_width out_width acc_width batch block_in 
 		set_directive_array_reshape -type block -factor $out_reshape_factor -dim 2 "store" out_mem
 	}
 	# Set accumulator partition factor
-	set acc_bus_width [expr {(1 << ($acc_width + $block_out + $batch)) / $ii}]
-	set acc_reshape_factor [expr {$acc_bus_width / 64}]
-	set_directive_array_reshape -type block -factor $acc_reshape_factor -dim 2 "compute" acc_mem
+	# set acc_bus_width [expr {(1 << ($acc_width + $block_out + $batch)) / $ii}]
+	# set acc_reshape_factor [expr {$acc_bus_width / $axi_width}]
+	# set_directive_array_reshape -type block -factor $acc_reshape_factor -dim 2 "compute" acc_mem
 }
 
 # C define flags to pass to compiler
