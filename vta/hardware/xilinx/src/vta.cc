@@ -212,7 +212,7 @@ void compute(
 
   // Accumulator storage
   static axi_T acc_mem[VTA_ACC_BUFF_DEPTH][ACC_TENSOR_ELEMS];
-// #pragma HLS ARRAY_PARTITION variable = acc_mem complete dim = 2
+#pragma HLS ARRAY_PARTITION variable = acc_mem complete dim = 2
 // This is necessary to obtain II=1
 #pragma HLS DEPENDENCE variable = acc_mem inter false
 
