@@ -1,7 +1,7 @@
 {
-  "TARGET" : "pynq",
+  "TARGET" : "sim",
   "HW_FREQ" : 100,
-  "HW_CLK_TARGET" : 7,
+  "HW_CLK_TARGET" : 8,
   "HW_VER" : "0.0.0",
   "GEMM_II" : 2,
   "TALU_II" : 2,
@@ -13,7 +13,7 @@
   "LOG_BLOCK_IN" : 5,
   "LOG_BLOCK_OUT" : 5,
   "LOG_UOP_BUFF_SIZE" : 15,
-  "LOG_INP_BUFF_SIZE" : 15,
-  "LOG_WGT_BUFF_SIZE" : 15,
+  "LOG_INP_BUFF_SIZE" : 17,
+  "LOG_WGT_BUFF_SIZE" : 17,
   "LOG_ACC_BUFF_SIZE" : 17
 }
