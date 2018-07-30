@@ -315,7 +315,7 @@ def _get_workload(data, pad_data, kernel, output):
     w_str = (i_w + w_pad*2 - k_w) // (o_w - 1)
     return Workload(i_b, i_h, i_w, i_c, o_c, k_h, k_w, h_pad, w_pad, h_str, w_str)
 
-def schedule_packed_conv2d(outs):
+def schedule_packed_conv2d(outs, plan=None):
     """ Schedule the packed conv2d.
     """
     assert len(outs) == 1
@@ -351,8 +351,9 @@ def schedule_packed_conv2d(outs):
     else:
         pad_data = None
     wrkld = _get_workload(data, pad_data, kernel, output)
-    plan = find_schedules(wrkld, vt_only=True, best_only=True)[0]
-    logging.info("Trying to find plan for %s", wrkld)
+    if plan is None:
+        plan = find_schedules(wrkld, vt_only=True, best_only=True)[0]
+        logging.info("Trying to find plan for %s", wrkld)
     env = get_env()
 
     load_inp = load_wgt = load_out = store_out = env.dma_copy
