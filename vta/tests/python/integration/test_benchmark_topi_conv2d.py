@@ -17,6 +17,8 @@ def _sign_extend(value, bits):
     sign_bit = 1 << (bits - 1)
     return (value & (sign_bit - 1)) - (value & sign_bit)
 
+_vector_sign_extend = np.vectorize(_sign_extend)
+
 def _pack(x, width):
     assert(len(x.shape)==6)
     assert(x.dtype=="int8")
@@ -34,19 +36,17 @@ def _pack(x, width):
     return x_packed
 
 def _unpack(x, width):
-    assert(len(x.shape)==4)
+    assert(len(x.shape)==6)
     assert(x.dtype=="int8")
     pack_factor = 8 // width
     mask = ((1 << width) - 1)
 
-    vse = np.vectorize(_sign_extend)
-
     s = x.shape
-    x_unpack = np.zeros((s[0], s[1], s[2], s[3], pack_factor), dtype=x.dtype)
+    x_unpack = np.zeros(s[:] + (pack_factor,), dtype=x.dtype)
     for i in range(0, pack_factor):
-        x_unpack[:,:,:,:,i] = vse(((x >> (i * width)) & mask), width)
+        x_unpack[:,:,:,:,:,:,i] = _vector_sign_extend(((x >> (i * width)) & mask), width)
 
-    return x_unpack.reshape(s[0], s[1], s[2], s[3]*pack_factor)
+    return x_unpack.reshape(s[:-1] + (s[-1] * pack_factor,))
 
 @tvm.tag_scope(tag=topi.tag.ELEMWISE)
 def my_clip(x, a_min, a_max):
@@ -175,7 +175,8 @@ def test_vta_conv2d():
                       wl.height, wl.width, env.BATCH, env.BLOCK_IN)
         kernel_shape = (wl.out_filter//env.BLOCK_OUT, wl.in_filter//env.BLOCK_IN,
                         wl.hkernel, wl.wkernel, env.BLOCK_OUT, env.BLOCK_IN)
-        bias_shape = (1, wl.out_filter//env.BLOCK_OUT, 1, 1, env.BATCH, env.BLOCK_OUT)
+        bias_shape = (batch_size//env.BATCH, wl.out_filter//env.BLOCK_OUT,
+                      1, 1, env.BATCH, env.BLOCK_OUT)
 
         fout_height = (wl.height + 2 * wl.hpad - wl.hkernel) // wl.hstride + 1
         fout_width = (wl.width + 2 * wl.wpad - wl.wkernel) // wl.wstride + 1
@@ -185,11 +186,10 @@ def test_vta_conv2d():
 
         res_conv = vta.top.packed_conv2d(
             data, kernel, padding=(wl.hpad, wl.wpad), strides=(wl.hstride, wl.wstride))
-        # res = topi.right_shift(res_conv, 8)
-        # res = topi.add(res, bias)
-        # res = my_clip(res, 0, 127)
-        # res = topi.cast(res, "int8")
-        res = topi.cast(res_conv, env.out_dtype)
+        res = topi.right_shift(res_conv, 8)
+        res = topi.add(res, bias)
+        res = my_clip(res, 0, (1 << env.OUT_WIDTH-1)-1)
+        res = topi.cast(res, "int8")
 
         # To compute number of ops, use a x2 factor for FMA
         num_ops = 2 * batch_size * fout_height * fout_width * wl.hkernel * wl.wkernel * wl.out_filter * wl.in_filter
@@ -203,6 +203,17 @@ def test_vta_conv2d():
         assert wl.hpad == wl.wpad
         padding = wl.hpad
 
+        # Handle packing for quantized activations (less than 8bits)
+        x_pack_factor = 1 << (3 - env.LOG_INP_WIDTH)
+        data_shape_pack = (batch_size//env.BATCH, wl.in_filter//env.BLOCK_IN,
+                           wl.height, wl.width, env.BATCH, env.BLOCK_IN//x_pack_factor)
+        data_arg_buffer = tvm.decl_buffer(
+            data_shape_pack,
+            dtype="int8", name="data_arg")
+        data_bind_buffer = tvm.decl_buffer(
+            data.shape, data.dtype, name=data.op.name,
+            data=data_arg_buffer.data)
+
         # Handle packing for quantized weights (less than 8bits)
         w_pack_factor = 1 << (3 - env.LOG_WGT_WIDTH)
         kernel_shape_pack = (wl.out_filter//env.BLOCK_OUT, wl.in_filter//env.BLOCK_IN,
@@ -213,28 +224,35 @@ def test_vta_conv2d():
         kernel_bind_buffer = tvm.decl_buffer(
             kernel.shape, kernel.dtype, name=kernel.op.name,
             data=kernel_arg_buffer.data)
-        binds = {kernel: kernel_bind_buffer}
+
+        # Handle packing for outputs (less than 8bits)
+        o_pack_factor = 1 << (3 - env.LOG_OUT_WIDTH)
+        res_shape = topi.util.get_const_tuple(res.shape)
+        res_shape_pack = res_shape[:-1] + (res_shape[-1]//o_pack_factor,)
+        res_arg_buffer = tvm.decl_buffer(
+            res_shape_pack,
+            dtype="int8", name="res_arg")
+        res_bind_buffer = tvm.decl_buffer(
+            res.shape, res.dtype, name=res.op.name,
+            data=res_arg_buffer.data)
+
+        binds = {kernel: kernel_bind_buffer, data: data_bind_buffer, res: res_bind_buffer}
 
         # @memoize("vta.tests.test_benchmark_topi.conv2d.verify_nhwc")
         def get_ref_data():
             # derive min max for input and weight types (max non inclusive)
-            a_width = 1 << (env.LOG_INP_WIDTH)
-            w_width = 1 << (env.LOG_WGT_WIDTH)
-            a_min, a_max = 0 - (1 << (a_width - 1)), (1 << (a_width - 1))
-            w_min, w_max = 0 - (1 << (w_width - 1)), (1 << (w_width - 1))
+            a_min, a_max = 0 - (1 << (env.INP_WIDTH - 1)), (1 << (env.INP_WIDTH - 1))
+            w_min, w_max = 0 - (1 << (env.WGT_WIDTH - 1)), (1 << (env.WGT_WIDTH - 1))
             a_np = np.random.randint(
-                a_min, a_max, size=a_shape).astype(data_dtype)
+                a_min, a_max, size=a_shape).astype("int8")
             w_np = np.random.randint(
                 w_min, w_max, size=w_shape).astype("int8")
-            # TODO: investigate data packing bug when act/wgts are negative
-            a_np = np.abs(a_np)
-            w_np = np.abs(w_np)
             b_np = topi.testing.conv2d_nchw_python(
                 a_np.astype(acc_dtype), w_np.astype(acc_dtype), stride, padding).astype(acc_dtype)
             return a_np, w_np, b_np
 
         def verify(s, check_correctness):
-            mod = vta.build(s, [data, kernel_arg_buffer, bias, res], "ext_dev",
+            mod = vta.build(s, [data_arg_buffer, kernel_arg_buffer, bias, res_arg_buffer], "ext_dev",
                             env.target_host, name="conv2d", binds=binds)
             temp = util.tempdir()
 
@@ -257,30 +275,32 @@ def test_vta_conv2d():
                 wl.in_filter//env.BLOCK_IN, env.BLOCK_IN,
                 wl.hkernel, wl.wkernel).transpose((0, 2, 4, 5, 1, 3))
             bias_packed = bias_orig.reshape(
-                1, wl.out_filter // env.BLOCK_OUT, 1, 1, env.BATCH, env.BLOCK_OUT)
-            res_shape = topi.util.get_const_tuple(res.shape)
+                batch_size // env.BATCH, wl.out_filter // env.BLOCK_OUT,
+                1, 1, env.BATCH, env.BLOCK_OUT)
 
             # Quantized packing
+            data_qpacked = _pack(data_packed, env.INP_WIDTH)
             kernel_qpacked = _pack(kernel_packed, env.WGT_WIDTH)
 
             res_np = np.zeros(res_shape).astype(res.dtype)
-            data_arr = tvm.nd.array(data_packed, ctx)
-            # kernel_arr = tvm.nd.array(kernel_packed, ctx)
+            data_arr = tvm.nd.array(data_qpacked, ctx)
             kernel_arr = tvm.nd.array(kernel_qpacked, ctx)
             bias_arr = tvm.nd.array(bias_packed, ctx)
             res_arr = tvm.nd.array(res_np, ctx)
             time_f = f.time_evaluator("conv2d", ctx, number=5)
             cost = time_f(data_arr, kernel_arr, bias_arr, res_arr)
-            res_unpack = res_arr.asnumpy().transpose(
+
+            res_unpack = res_arr.asnumpy()
+            res_unpack = _unpack(res_unpack.astype("int8"), env.OUT_WIDTH)
+            res_unpack = res_unpack.transpose(
                 (0, 4, 1, 5, 2, 3)).reshape(batch_size, wl.out_filter, fout_height, fout_width)
             if check_correctness:
                 assert wl.hpad == wl.wpad
                 stride = (wl.hstride, wl.wstride)
                 padding = wl.hpad
-                # res_ref = res_ref >> 8
-                # res_ref += bias_orig.reshape(wl.out_filter, 1, 1)
-                # res_ref = np.clip(res_ref, 0, 127).astype("int8")
-                res_ref = res_ref.astype("int8")
+                res_ref = res_ref >> 8
+                res_ref += bias_orig.reshape(wl.out_filter, 1, 1)
+                res_ref = np.clip(res_ref, 0, (1 << env.OUT_WIDTH-1)-1).astype("int8")
                 np.testing.assert_allclose(res_unpack, res_ref)
             return cost
 
@@ -289,7 +309,7 @@ def test_vta_conv2d():
             with vta.build_config():
                 s = vta.top.schedule_packed_conv2d([res])
                 if print_ir:
-                    print(vta.lower(s, [data, kernel, bias, res], simple_mode=True))
+                    print(vta.lower(s, [data_arg_buffer, kernel_arg_buffer, bias, res_arg_buffer], simple_mode=True))
             cost = verify(s, True)
             gops = (num_ops / cost.mean) / float(10 ** 9)
             print("\tTime cost = %g sec/op, %g GOPS" % (cost.mean, gops))
