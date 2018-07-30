@@ -323,7 +323,6 @@ def schedule_packed_conv2d(outs, plan=None):
     ewise_inputs = []
     ewise_ops = []
     conv2d_res = []
-    assert output.dtype == "int8"
     assert output.op.input_tensors[0].dtype == "int32"
 
     def _traverse(op):
