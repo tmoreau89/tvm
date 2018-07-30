@@ -64,6 +64,11 @@ inline TShape ConvertLayout(TShape src, const Layout& src_layout, const Layout& 
       int dst_factor = dst_layout.subsizeof(src_dim);
 
       uint32_t src_dim_size = src[i];
+      // multiply inner-most dimension by pack factor.
+      if (i + 1 == src_layout.ndim() ||
+          src_minor_pos + 1 == src_layout.ndim()) {
+        src_dim_size *= src_layout.pack_factor();
+      }
       if (src_minor_pos >= 0) {
         CHECK_EQ(src_factor, src[src_minor_pos]) << "src shape " << src
                                                  << " does not agree with layout " << src_layout;
@@ -80,6 +85,15 @@ inline TShape ConvertLayout(TShape src, const Layout& src_layout, const Layout& 
                                            << src_dim_size << " by " << dst_factor;
         dst[dst_major_pos] /= dst_factor;
         dst[dst_minor_pos] = dst_factor;
+      }
+      int32_t dst_pack = dst_layout.pack_factor();
+      if (dst_major_pos + 1 == dst_layout.ndim()) {
+        CHECK_EQ(dst[dst_major_pos] % dst_pack, 0);
+        dst[dst_major_pos] = (dst[dst_major_pos] + dst_pack - 1) / dst_pack;
+      }
+      if (dst_minor_pos + 1 == dst_layout.ndim()) {
+        CHECK_EQ(dst[dst_minor_pos] % dst_pack, 0);
+        dst[dst_minor_pos] = (dst[dst_minor_pos] + dst_pack - 1) / dst_pack;
       }
     }
   }

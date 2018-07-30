@@ -185,6 +185,7 @@ class Layout {
   inline bool convertible(const Layout &dst) const {
     if (!this->defined() || !dst.defined()) return false;
     for (size_t i = 0; i < kUniqueDim; ++i) {
+      // specially handle bit layout, division
       if ((superdim_pos_[i] >= 0 && dst.superdim_pos_[i] < 0) ||
           (superdim_pos_[i] < 0 && dst.superdim_pos_[i] >= 0)) {
         return false;
@@ -283,6 +284,10 @@ class Layout {
   /*! \return number of dimensions */
   inline size_t ndim() const {
     return layout_simplified_.size();
+  }
+  /*! \return bit packing factor */
+  inline int32_t pack_factor() const {
+    return pack_factor_;
   }
 
   /*!
@@ -398,6 +403,7 @@ class Layout {
   int32_t superdim_pos_[kUniqueDim];
   int32_t subdim_pos_[kUniqueDim];
   int64_t subdim_size_[kUniqueDim];
+  int32_t pack_factor_{1};
   std::vector<LayoutDim> layout_simplified_;
 
   void parse(const std::string& layout) {
@@ -430,9 +436,14 @@ class Layout {
                                            << ": duplicate dimension " << c;
         CHECK_EQ(subdim_size_[pos], -1) << "Invalid layout " << layout
                                          << ": duplicate dimension " << c;
-        subdim_pos_[pos] = curr++;
-        subdim_size_[pos] = factor;
-        layout_simplified_.push_back(c);
+        if (c == 'p') {
+          // p is a special packing factor.
+          pack_factor_ = factor;
+        } else {
+          subdim_pos_[pos] = curr++;
+          subdim_size_[pos] = factor;
+          layout_simplified_.push_back(c);
+        }
         factor = 0;
       } else if (c >= '0' && c <= '9') {
         CHECK(factor >= 0) << "Invalid layout " << layout << ": _ is adjacent to a number.";
