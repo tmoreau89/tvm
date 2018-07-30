@@ -3,6 +3,7 @@ from __future__ import absolute_import as _abs
 
 import tvm
 from . import ir_pass
+from . import ptr_alias
 from .environment import get_env
 
 
@@ -52,7 +53,8 @@ def build_config(debug_flag=0, **kwargs):
             debug_flag)
 
         return tvm.make.stmt_seq(debug, stmt)
-    pass_list = [(1, ir_pass.inject_dma_intrin),
+    pass_list = [(1, ptr_alias.lower_ptr_alias),
+                 (1, ir_pass.inject_dma_intrin),
                  (1, ir_pass.inject_skip_copy),
                  (1, ir_pass.annotate_alu_coproc_scope),
                  (1, lambda x: tvm.ir_pass.LiftAttrScope(x, "coproc_uop_scope", True)),
