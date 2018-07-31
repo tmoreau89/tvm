@@ -61,7 +61,6 @@ def test_cpu_conv2d():
     def run_cpu_conv2d(env, remote, key, batch_size, wl, profile=True):
         data_shape = (batch_size, wl.in_filter, wl.height, wl.width)
         kernel_shape = (wl.out_filter, wl.in_filter, wl.hkernel, wl.wkernel)
-
         fout_height = (wl.height + 2 * wl.hpad - wl.hkernel) // wl.hstride + 1
         fout_width = (wl.width + 2 * wl.wpad - wl.wkernel) // wl.wstride + 1
         data = tvm.placeholder(data_shape, name="data", dtype=env.inp_dtype)

@@ -10,7 +10,7 @@ import topi
 from nnvm.top import registry as reg, OpPattern
 from nnvm.top import nn as _nn
 from ..environment import get_env
-
+from ..ptr_alias import reinterpret
 
 Workload = namedtuple("Conv2DWorkload",
                       ['batch', 'height', 'width', 'in_filter', 'out_filter',
@@ -259,9 +259,23 @@ def compute_conv2d(attrs, inputs, out):
     groups = attrs.get_int("groups")
     layout = attrs["layout"]
     out_dtype = attrs['out_dtype']
+
     assert dilation == (1, 1), "not support dilate now"
     if is_packed_layout(layout):
         assert groups == 1
+        env = get_env()
+        assert env.LOG_INP_WIDTH == 3, "only support 8bit inp for now"
+        assert env.LOG_OUT_WIDTH == 3, "only support 8bit inp for now"
+        inputs = list(inputs)
+        w_pack_factor = 1 << (3 - env.LOG_WGT_WIDTH)
+        assert inputs[1].dtype == "int8"
+
+        # Apply bit packing if necessary
+        if w_pack_factor != 1:
+            kshape = list(topi.util.get_const_tuple(inputs[1].shape))
+            kshape[-1] *= w_pack_factor
+            inputs[1] = reinterpret(inputs[1], kshape, dtype=env.wgt_dtype)
+
         return packed_conv2d(inputs[0], inputs[1],
                              padding, strides, out_dtype=out_dtype)
     return _nn.compute_conv2d(attrs, inputs, out)
