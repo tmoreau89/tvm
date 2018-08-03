@@ -1,5 +1,5 @@
 {
-  "TARGET" : "pynq",
+  "TARGET" : "sim",
   "HW_VER" : "0.0.2",
   "HW_FREQ" : 100,
   "HW_CLK_TARGET" : 7,

@@ -483,6 +483,11 @@ class Device {
             return std::min(x, y);
           });
       }
+      case VTA_ALU_OPCODE_MUL: {
+        return RunALULoop<use_imm>(op, [](int32_t x, int32_t y) {
+            return x * y;
+          });
+      }
       case VTA_ALU_OPCODE_SHR: {
         return RunALULoop<use_imm>(op, [](int32_t x, int32_t y) {
             if (y >= 0) {

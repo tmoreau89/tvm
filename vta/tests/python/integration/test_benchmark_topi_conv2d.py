@@ -202,6 +202,7 @@ def test_vta_conv2d():
         res = topi.add(res, bias)
         res = topi.multiply(res, coeff)
         res = my_clip(res, 0, (1 << env.OUT_WIDTH-1)-1)
+        res = topi.cast(res, "int8")
 
         # Handle quantized outputs (less than 8 bits)
         # o_pack_factor = 1 << (3 - env.LOG_OUT_WIDTH)
