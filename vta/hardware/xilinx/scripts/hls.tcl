@@ -11,8 +11,8 @@
 # Arg 4: path to include sources
 # Arg 5: mode
 # Arg 6: debug
-# Arg 7: no_dsp
-# Arg 8: no_alu
+# Arg 7: alu_ena
+# Arg 8: mul_ena
 # Arg 9: target clock period
 # Arg 10: target II for GEMM
 # Arg 11: target II for tensor ALU
@@ -36,8 +36,8 @@ if { [llength $argv] eq 25 } {
 	set include_dir [lindex $argv 5]
 	set mode [lindex $argv 6]
 	set debug [lindex $argv 7]
-	set no_dsp [lindex $argv 8]
-	set no_alu [lindex $argv 9]
+	set alu_ena [lindex $argv 8]
+	set mul_ena [lindex $argv 9]
 	set target_period [lindex $argv 10]
 	set target_gemm_ii [lindex $argv 11]
 	set target_alu_ii [lindex $argv 12]
@@ -59,9 +59,9 @@ if { [llength $argv] eq 25 } {
 	set test_dir "../../src/test"
 	set include_dir "../../include"
 	set mode "all"
-	set debug "false"
-	set no_dsp "true"
-	set no_alu "false"
+	set debug "False"
+	set alu_ena "True"
+	set mul_ena "True"
 	set target_period 8
 	set target_gemm_ii 10
 	set target_alu_ii 16
@@ -83,7 +83,7 @@ if { [llength $argv] eq 25 } {
 # Initializes the HLS design and sets HLS pragmas for memory partitioning.
 # This is necessary because of a Vivado restriction that doesn't allow for
 # buses wider than 1024 bits.
-proc init_design {per ii inp_width wgt_width out_width acc_width batch block_in block_out no_alu} {
+proc init_design {per g_ii a_ii inp_width wgt_width out_width acc_width batch block_in block_out alu_ena} {
 
 	# Set device number
 	set_part {xc7z020clg484-1}
@@ -98,14 +98,14 @@ proc init_design {per ii inp_width wgt_width out_width acc_width batch block_in 
 	create_clock -period $per -name default
 
 	# Set pipeline directive
-	set_directive_pipeline -II $ii "compute/READ_GEMM_UOP"
+	set_directive_pipeline -II $g_ii "compute/READ_GEMM_UOP"
 
-	if {$no_alu=="false"} {
-		set_directive_pipeline -II $ii "compute/READ_ALU_UOP"
+	if {$alu_ena=="True"} {
+		set_directive_pipeline -II $a_ii "compute/READ_ALU_UOP"
 	}
 
-	# Set input partition factor to (INP_VECTOR_WIDTH*BATCH/(1024*ii)
-	set inp_bus_width [expr {(1 << ($inp_width + $block_in + $batch)) / $ii}]
+	# Set input partition factor to (INP_VECTOR_WIDTH*BATCH/(1024*g_ii)
+	set inp_bus_width [expr {(1 << ($inp_width + $block_in + $batch)) / $g_ii}]
 	set inp_partition_factor [expr {$inp_bus_width / $max_width}]
 	if {$inp_partition_factor == 0} {
 		set inp_reshape_factor [expr {$inp_bus_width / $axi_width}]
@@ -118,8 +118,8 @@ proc init_design {per ii inp_width wgt_width out_width acc_width batch block_in 
 		set_directive_array_reshape -type block -factor $inp_reshape_factor -dim 2 "load" inp_mem
 		set_directive_array_reshape -type block -factor $inp_reshape_factor -dim 2 "compute" inp_mem
 	}
-	# Set weight partition factor to (WGT_VECTOR_WIDTH*BLOCK_OUT/(1024*ii))
-	set wgt_bus_width [expr {(1 << ($wgt_width + $block_in + $block_out)) / $ii}]
+	# Set weight partition factor to (WGT_VECTOR_WIDTH*BLOCK_OUT/(1024*g_ii))
+	set wgt_bus_width [expr {(1 << ($wgt_width + $block_in + $block_out)) / $g_ii}]
 	set wgt_partition_factor [expr {$wgt_bus_width / $max_width}]
 	if {$wgt_partition_factor == 0} {
 		set wgt_reshape_factor [expr {$wgt_bus_width / $axi_width}]
@@ -132,8 +132,8 @@ proc init_design {per ii inp_width wgt_width out_width acc_width batch block_in 
 		set_directive_array_reshape -type block -factor $wgt_reshape_factor -dim 2 "load" wgt_mem
 		set_directive_array_reshape -type block -factor $wgt_reshape_factor -dim 2 "compute" wgt_mem
 	}
-	# Set output partition factor to (OUT_VECTOR_WIDTH*BATCH/(1024*ii))
-	set out_bus_width [expr {(1 << ($out_width + $block_out + $batch)) / $ii}]
+	# Set output partition factor to (OUT_VECTOR_WIDTH*BATCH/(1024*g_ii))
+	set out_bus_width [expr {(1 << ($out_width + $block_out + $batch)) / $g_ii}]
 	set out_partition_factor [expr {$out_bus_width / $max_width}]
 	if {$out_partition_factor == 0} {
 		set out_reshape_factor [expr {$out_bus_width / $axi_width}]
@@ -147,9 +147,9 @@ proc init_design {per ii inp_width wgt_width out_width acc_width batch block_in 
 		set_directive_array_reshape -type block -factor $out_reshape_factor -dim 2 "store" out_mem
 	}
 	# Set accumulator partition factor
-	# set acc_bus_width [expr {(1 << ($acc_width + $block_out + $batch)) / $ii}]
+	# set acc_bus_width [expr {(1 << ($acc_width + $block_out + $batch)) / $g_ii}]
 	# set acc_reshape_factor [expr {$acc_bus_width / $axi_width}]
-	# set_directive_array_reshape -type block -factor $acc_reshape_factor -dim 2 "compute" acc_mem
+	# set_directive_array_partition -type block -factor $acc_reshape_factor -dim 2 "compute" acc_mem
 }
 
 # C define flags to pass to compiler
@@ -160,14 +160,14 @@ set cflags "-I $include_dir -I $src_dir -I $test_dir \
 	-DVTA_LOG_UOP_BUFF_SIZE=$uop_buff_size -DVTA_LOG_INP_BUFF_SIZE=$inp_buff_size \
 	-DVTA_LOG_WGT_BUFF_SIZE=$wgt_buff_size -DVTA_LOG_ACC_BUFF_SIZE=$acc_buff_size \
 	-DVTA_LOG_OUT_BUFF_SIZE=$out_buff_size"
-if {$debug=="true"} {
+if {$debug=="True"} {
 	append cflags " -DVTA_DEBUG=1"
 }
-if {$no_dsp=="true"} {
-	append cflags " -DNO_DSP"
+if {$alu_ena=="True"} {
+	append cflags " -DALU_EN"
 }
-if {$no_alu=="true"} {
-	append cflags " -DNO_ALU"
+if {$mul_ena=="True"} {
+	append cflags " -DMUL_EN"
 }
 
 # HLS behavioral sim
@@ -178,7 +178,7 @@ if {$mode=="all" || $mode=="sim"} {
 	add_files -tb $sim_dir/vta_test.cc -cflags $cflags
 	add_files -tb $test_dir/test_lib.cc -cflags $cflags
 	open_solution "solution0"
-	init_design $target_period $target_gemm_ii $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $no_alu
+	init_design $target_period $target_gemm_ii $target_alu_ii $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $alu_ena
 	csim_design -clean
 	close_project
 }
@@ -189,7 +189,7 @@ if {$mode=="all" || $mode=="skip_sim" || $mode=="fetch"} {
 	set_top fetch
 	add_files $src_dir/vta.cc -cflags $cflags
 	open_solution "solution0"
-	init_design $target_period $target_gemm_ii $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $no_alu
+	init_design $target_period $target_gemm_ii $target_alu_ii $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $alu_ena
 	csynth_design
 	if {$mode=="all" || $mode=="skip_sim"} {
 		export_design -format ip_catalog
@@ -203,7 +203,7 @@ if {$mode=="all" || $mode=="skip_sim" || $mode=="load"} {
 	set_top load
 	add_files $src_dir/vta.cc -cflags $cflags
 	open_solution "solution0"
-	init_design $target_period $target_gemm_ii $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $no_alu
+	init_design $target_period $target_gemm_ii $target_alu_ii $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $alu_ena
 	csynth_design
 	if {$mode=="all" || $mode=="skip_sim"} {
 		export_design -format ip_catalog
@@ -217,7 +217,7 @@ if {$mode=="all" || $mode=="skip_sim" || $mode=="compute"} {
 	set_top compute
 	add_files $src_dir/vta.cc -cflags $cflags
 	open_solution "solution0"
-	init_design $target_period $target_gemm_ii $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $no_alu
+	init_design $target_period $target_gemm_ii $target_alu_ii $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $alu_ena
 	csynth_design
 	if {$mode=="all" || $mode=="skip_sim"} {
 		export_design -format ip_catalog
@@ -231,7 +231,7 @@ if {$mode=="all" || $mode=="skip_sim" || $mode=="store"} {
 	set_top store
 	add_files $src_dir/vta.cc -cflags $cflags
 	open_solution "solution0"
-	init_design $target_period $target_gemm_ii $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $no_alu
+	init_design $target_period $target_gemm_ii $target_alu_ii $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $alu_ena
 	csynth_design
 	if {$mode=="all" || $mode=="skip_sim"} {
 		export_design -format ip_catalog

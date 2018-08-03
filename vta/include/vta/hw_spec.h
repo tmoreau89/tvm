@@ -16,6 +16,9 @@ extern "C" {
 /*! AXI bus width */
 #define VTA_AXI_WIDTH 64
 
+/*! Register file width */
+#define VTA_REG_WIDTH 24
+
 /*! log2 of instruction data type width */
 #define VTA_LOG_INS_WIDTH 7
 /*! Instruction data type width */
@@ -50,6 +53,8 @@ extern "C" {
 #define VTA_INP_VECTOR_WIDTH (VTA_INP_WIDTH * VTA_BLOCK_IN)
 /*! Accumulator vector width */
 #define VTA_ACC_VECTOR_WIDTH (VTA_ACC_WIDTH * VTA_BLOCK_OUT)
+/*! Register file vector width */
+#define VTA_REG_VECTOR_WIDTH (VTA_REG_WIDTH * VTA_BLOCK_OUT)
 /*! Output vector width */
 #define VTA_OUT_VECTOR_WIDTH (VTA_OUT_WIDTH * VTA_BLOCK_OUT)
 
@@ -98,7 +103,7 @@ extern "C" {
 /*! Instruction opcode field bitwidth */
 #define VTA_OPCODE_BIT_WIDTH 3
 /*! ALU opcode field bitwidth */
-#define VTA_ALU_OPCODE_BIT_WIDTH 2
+#define VTA_ALU_OPCODE_BIT_WIDTH 3
 
 /*! Opcode: load encoding */
 #define VTA_OPCODE_LOAD 0
@@ -119,6 +124,8 @@ extern "C" {
 #define VTA_ALU_OPCODE_ADD 2
 /*! ALU opcode: shift right by immediate op */
 #define VTA_ALU_OPCODE_SHR 3
+/*! ALU opcode: shift right by immediate op */
+#define VTA_ALU_OPCODE_MUL 4
 
 /*! Memory type field bitwidth */
 #define VTA_MEMOP_ID_BIT_WIDTH 2
@@ -134,10 +141,14 @@ extern "C" {
 #define VTA_MEMOP_PAD_BIT_WIDTH 4
 /*! Load/Store Instruction: padding value encoding width*/
 #define VTA_MEMOP_PAD_VAL_BIT_WIDTH 2
-/*! ALU Instruction: immediate bitwidth*/
-#define VTA_ALUOP_IMM_BIT_WIDTH 16
 /*! GEMM/ALU Instruction: loop max iter bits */
 #define VTA_LOOP_ITER_WIDTH 14
+/*! ALU Instruction: immediate bitwidth*/
+#define VTA_ALUOP_IMM_BIT_WIDTH 16
+/*! ALU Instruction: shift arg bitwidth*/
+#define VTA_SHR_ARG_BIT_WIDTH (VTA_LOG_ACC_WIDTH)
+/*! ALU Instruction: multiply arg bitwidth*/
+#define VTA_MUL_ARG_BIT_WIDTH 8
 
 /*! Mem ID constant: uop memory */
 #define VTA_MEM_ID_UOP 0

@@ -37,6 +37,7 @@ class DevContext(object):
     ALU_OPCODE_MAX = 1
     ALU_OPCODE_ADD = 2
     ALU_OPCODE_SHR = 3
+    ALU_OPCODE_MUL = 4
     # Task queue id (pipeline stage)
     QID_LOAD_INP = 1
     QID_LOAD_WGT = 1
@@ -138,20 +139,6 @@ class Environment(object):
         self.WGT_ELEM_BYTES = self.WGT_ELEM_BITS // 8
         self.ACC_ELEM_BYTES = self.ACC_ELEM_BITS // 8
         self.OUT_ELEM_BYTES = self.OUT_ELEM_BITS // 8
-        # Configuration bitstream name
-        self.BITSTREAM = "{}x{}x{}_{}bx{}b_{}_{}_{}_{}_{}MHz_{}ns_v{}.bit".format(
-            (1 << cfg["LOG_BATCH"]),
-            (1 << cfg["LOG_BLOCK_IN"]),
-            (1 << cfg["LOG_BLOCK_OUT"]),
-            (1 << cfg["LOG_INP_WIDTH"]),
-            (1 << cfg["LOG_WGT_WIDTH"]),
-            cfg["LOG_UOP_BUFF_SIZE"],
-            cfg["LOG_INP_BUFF_SIZE"],
-            cfg["LOG_WGT_BUFF_SIZE"],
-            cfg["LOG_ACC_BUFF_SIZE"],
-            cfg["HW_FREQ"],
-            cfg["HW_CLK_TARGET"],
-            cfg["HW_VER"].replace('.', '_'))
         # dtypes
         self.acc_dtype = "int%d" % self.ACC_WIDTH
         self.inp_dtype = "int%d" % self.INP_WIDTH
@@ -162,6 +149,27 @@ class Environment(object):
         self._mock_env = None
         self._dev_ctx = None
         self._last_env = None
+        #  derive bitstream name
+        self.BITSTREAM = "{}_{}x{}x{}_a{}w{}o{}_{}_{}_{}_{}_{}MHz_{}ns_gii{}".format(
+            self.HW_VER.replace('.', '_'),
+            self.BATCH,
+            self.BLOCK_IN,
+            self.BLOCK_OUT,
+            self.INP_WIDTH,
+            self.WGT_WIDTH,
+            self.OUT_WIDTH,
+            self.LOG_UOP_BUFF_SIZE,
+            self.LOG_INP_BUFF_SIZE,
+            self.LOG_WGT_BUFF_SIZE,
+            self.LOG_ACC_BUFF_SIZE,
+            self.HW_FREQ,
+            self.HW_CLK_TARGET,
+            self.GEMM_II)
+        if self.ALU_EN:
+            self.BITSTREAM += "_aii{}".format(self.TALU_II)
+        if self.MUL_EN and self.ALU_EN:
+            self.BITSTREAM += "_mul"
+        self.BITSTREAM += ".bit"
 
     def __enter__(self):
         self._last_env = Environment.current

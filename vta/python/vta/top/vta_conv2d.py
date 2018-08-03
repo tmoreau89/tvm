@@ -329,7 +329,9 @@ def _get_workload(data, pad_data, kernel, output):
     w_str = (i_w + w_pad*2 - k_w) // (o_w - 1)
     return Workload(i_b, i_h, i_w, i_c, o_c, k_h, k_w, h_pad, w_pad, h_str, w_str)
 
-def schedule_packed_conv2d(outs, plan=None):
+def schedule_packed_conv2d(outs, plan=None, skip_load_inp=False, skip_load_wgt=False,
+                           skip_load_acc=False, skip_store_out=False, skip_alu=False,
+                           skip_gemm=False):
     """ Schedule the packed conv2d.
     """
     assert len(outs) == 1
@@ -368,10 +370,14 @@ def schedule_packed_conv2d(outs, plan=None):
         plan = find_schedules(wrkld, vt_only=True, best_only=True)[0]
         logging.info("Trying to find plan for %s", wrkld)
     env = get_env()
+    mock = env.mock
 
-    load_inp = load_wgt = load_out = store_out = env.dma_copy
-    alu = env.alu
-    gemm = env.gemm
+    load_inp = mock.dma_copy if skip_load_inp else env.dma_copy
+    load_wgt = mock.dma_copy if skip_load_wgt else env.dma_copy
+    load_acc = mock.dma_copy if skip_load_acc else env.dma_copy
+    store_out = mock.dma_copy if skip_store_out else env.dma_copy
+    alu = mock.alu if skip_alu else env.alu
+    gemm = mock.gemm if skip_gemm else env.gemm
 
     # schedule1
     oshape = topi.util.get_const_tuple(output.shape)
@@ -417,7 +423,7 @@ def schedule_packed_conv2d(outs, plan=None):
 
     for tensor in cache_read_ewise:
         s[tensor].compute_at(s[output], store_pt)
-        s[tensor].pragma(s[tensor].op.axis[0], load_out)
+        s[tensor].pragma(s[tensor].op.axis[0], load_acc)
 
     # virtual threading along output channel axes
     if plan.oc_nthread > 1:

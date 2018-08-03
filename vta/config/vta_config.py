@@ -38,6 +38,10 @@ def main():
                         help="print the target")
     parser.add_argument("--cfg-str", action="store_true",
                         help="print the configuration string")
+    parser.add_argument("--get-aluen", action="store_true",
+                        help="returns whether ALU is enabled")
+    parser.add_argument("--get-mulen", action="store_true",
+                        help="returns whether mul in ALU is enabled")
     parser.add_argument("--get-gemmii", action="store_true",
                         help="returns the GEMM core II")
     parser.add_argument("--get-taluii", action="store_true",
@@ -90,7 +94,28 @@ def main():
     if not ok_path_list:
         raise RuntimeError("Cannot find config in %s" % str(path_list))
     cfg = json.load(open(ok_path_list[0]))
-    cfg["LOG_OUT_BUFF_SIZE"] = cfg["LOG_ACC_BUFF_SIZE"] + cfg["LOG_ACC_WIDTH"] - cfg["LOG_OUT_WIDTH"]
+    cfg["LOG_OUT_BUFF_SIZE"] = cfg["LOG_ACC_BUFF_SIZE"] - cfg["LOG_ACC_WIDTH"] + cfg["LOG_OUT_WIDTH"]
+    # Generate bitstream config string.
+    # Needs to match the BITSTREAM string in python/vta/environment.py
+    cfg["BITSTREAM"] = "{}_{}x{}x{}_a{}w{}o{}_{}_{}_{}_{}_{}MHz_{}ns_gii{}".format(
+        cfg["HW_VER"].replace('.', '_'),
+        (1 << cfg["LOG_BATCH"]),
+        (1 << cfg["LOG_BLOCK_IN"]),
+        (1 << cfg["LOG_BLOCK_OUT"]),
+        (1 << cfg["LOG_INP_WIDTH"]),
+        (1 << cfg["LOG_WGT_WIDTH"]),
+        (1 << cfg["LOG_OUT_WIDTH"]),
+        cfg["LOG_UOP_BUFF_SIZE"],
+        cfg["LOG_INP_BUFF_SIZE"],
+        cfg["LOG_WGT_BUFF_SIZE"],
+        cfg["LOG_ACC_BUFF_SIZE"],
+        cfg["HW_FREQ"],
+        cfg["HW_CLK_TARGET"],
+        cfg["GEMM_II"])
+    if cfg["ALU_EN"]:
+        cfg["BITSTREAM"] += "_aii{}".format(cfg["TALU_II"])
+    if cfg["MUL_EN"] and cfg["ALU_EN"]:
+        cfg["BITSTREAM"] += "_mul"
     pkg = get_pkg_config(cfg)
 
     if args.target:
@@ -119,23 +144,13 @@ def main():
             fo.write(pkg.cfg_json)
 
     if args.cfg_str:
-        # Needs to match the BITSTREAM string in python/vta/environment.py
-        cfg_str = "{}x{}x{}_g{}_a{}_{}bx{}b_{}_{}_{}_{}_{}MHz_{}ns_v{}".format(
-            (1 << cfg["LOG_BATCH"]),
-            (1 << cfg["LOG_BLOCK_IN"]),
-            (1 << cfg["LOG_BLOCK_OUT"]),
-            cfg["GEMM_II"],
-            cfg["TALU_II"],
-            (1 << cfg["LOG_INP_WIDTH"]),
-            (1 << cfg["LOG_WGT_WIDTH"]),
-            cfg["LOG_UOP_BUFF_SIZE"],
-            cfg["LOG_INP_BUFF_SIZE"],
-            cfg["LOG_WGT_BUFF_SIZE"],
-            cfg["LOG_ACC_BUFF_SIZE"],
-            cfg["HW_FREQ"],
-            cfg["HW_CLK_TARGET"],
-            cfg["HW_VER"].replace('.', '_'))
-        print(cfg_str)
+        print(cfg["BITSTREAM"])
+
+    if args.get_aluen:
+        print(cfg["ALU_EN"])
+
+    if args.get_mulen:
+        print(cfg["MUL_EN"])
 
     if args.get_gemmii:
         print(cfg["GEMM_II"])

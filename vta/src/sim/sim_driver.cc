@@ -406,7 +406,7 @@ class Device {
 
   void RunGEMM(const VTAGemInsn* op) {
     if (!op->reset_reg) {
-      prof_->gemm_counter += op->iter_out * op->iter_in;
+      prof_->gemm_counter += op->iter_out * op->iter_in * (op->uop_end - op->uop_bgn);
       for (uint32_t y = 0; y < op->iter_out; ++y) {
         for (uint32_t x = 0; x < op->iter_in; ++x) {
           for (uint32_t uindex = op->uop_bgn; uindex < op->uop_end; ++uindex) {
@@ -458,7 +458,6 @@ class Device {
   }
 
   void RunALU(const VTAAluInsn* op) {
-    prof_->alu_counter += op->iter_out * op->iter_in;
     if (op->use_imm) {
       RunALU_<true>(op);
     } else {
@@ -501,6 +500,7 @@ class Device {
 
   template<bool use_imm, typename F>
   void RunALULoop(const VTAAluInsn* op, F func) {
+    prof_->alu_counter += op->iter_out * op->iter_in * op->uop_end - op->uop_bgn;
     for (int y = 0; y < op->iter_out; ++y) {
       for (int x = 0; x < op->iter_in; ++x) {
         for (int k = op->uop_bgn; k < op->uop_end; ++k) {

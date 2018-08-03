@@ -133,6 +133,8 @@ const char* getOpcodeString(int opcode, bool use_imm) {
     }
   } else if (opcode == VTA_ALU_OPCODE_SHR) {
     return "shr";
+  } else if (opcode == VTA_ALU_OPCODE_MUL) {
+    return "mul";
   }
   return "unknown op";
 }
@@ -737,230 +739,246 @@ void printMicroOp(int num_uop, VTAUop *uops) {
   }
 }
 
-// int alu_test(int opcode, bool use_imm, int batch, int vector_size, bool uop_compression) {
-//   // Some assertions
-//   assert(batch % VTA_BATCH == 0);
-//   assert(vector_size % VTA_BLOCK_OUT == 0);
-//   assert(!(opcode == VTA_ALU_OPCODE_SHR && !use_imm));
-//   printf("=====================================================================================\n");
-//   printf("INFO - ALU test of %s: batch=%d, vector_size=%d, uop_compression=%d\n",
-//     getOpcodeString(opcode, use_imm), batch, vector_size, uop_compression);
+int alu_test(int opcode, bool use_imm, int batch, int vector_size, bool uop_compression) {
+  // Some assertions
+  assert(batch % VTA_BATCH == 0);
+  assert(vector_size % VTA_BLOCK_OUT == 0);
+  printf("=====================================================================================\n");
+  printf("INFO - ALU test of %s: batch=%d, vector_size=%d, uop_compression=%d\n",
+    getOpcodeString(opcode, use_imm), batch, vector_size, uop_compression);
 
-//   // Instruction count
-//   int ins_size = 3 * batch / VTA_BATCH + 2;
-//   // Micro op count
-//   int uop_size = uop_compression ? 1 : vector_size / VTA_BLOCK_OUT;
-//   // Input/output elements in each transfer
-//   int tx_size = vector_size / VTA_BLOCK_OUT;
-//   // Number of input sets to be generated
-//   int input_sets = (use_imm) ? 1 : 2;
-//   // Make sure we don't exceed buffer bounds
-//   assert(uop_size <= VTA_UOP_BUFF_DEPTH);
-//   assert(tx_size * input_sets <= VTA_ACC_BUFF_DEPTH);
+  // Instruction count
+  int ins_size = 3 * batch / VTA_BATCH + 2;
+  // Micro op count
+  int uop_size = uop_compression ? 1 : vector_size / VTA_BLOCK_OUT;
+  // Input/output elements in each transfer
+  int tx_size = vector_size / VTA_BLOCK_OUT;
+  // Number of input sets to be generated
+  int input_sets = (use_imm) ? 1 : 2;
+  // Make sure we don't exceed buffer bounds
+  assert(uop_size <= VTA_UOP_BUFF_DEPTH);
+  assert(tx_size * input_sets <= VTA_ACC_BUFF_DEPTH);
 
-//   // Immediate values
-//   acc_T *immediate = static_cast<acc_T *>(malloc(sizeof(acc_T) * batch / VTA_BATCH));
-//   for (int b = 0; b < batch / VTA_BATCH; b++) {
-//     if (opcode == VTA_ALU_OPCODE_MIN) {
-//       immediate[b] = static_cast<acc_T>(
-//           rand_r(&globalSeed) % (1LL << (VTA_INP_WIDTH / 2)) - (1LL << (VTA_INP_WIDTH / 2 - 1)));
-//     } else if (opcode == VTA_ALU_OPCODE_MAX) {
-//       immediate[b] = static_cast<acc_T>(
-//           rand_r(&globalSeed) % (1LL << (VTA_INP_WIDTH / 2)) - (1LL << (VTA_INP_WIDTH / 2 - 1)));
-//     } else if (opcode == VTA_ALU_OPCODE_ADD) {
-//       immediate[b] = static_cast<acc_T>(
-//           rand_r(&globalSeed) % (1LL << (VTA_INP_WIDTH / 2)) - (1LL << (VTA_INP_WIDTH / 2 - 1)));
-//     } else if (opcode == VTA_ALU_OPCODE_SHR) {
-//       immediate[b] = static_cast<acc_T>(
-//           rand_r(&globalSeed) % VTA_ACC_WIDTH - VTA_ACC_WIDTH/2);
-//     }
-//   }
+  // Immediate values
+  acc_T *immediate = static_cast<acc_T *>(malloc(sizeof(acc_T) * batch / VTA_BATCH));
+  for (int b = 0; b < batch / VTA_BATCH; b++) {
+    if (opcode == VTA_ALU_OPCODE_MIN) {
+      immediate[b] = static_cast<acc_T>(
+          rand_r(&globalSeed) % (1LL << (VTA_ALUOP_IMM_BIT_WIDTH - 1)) - (1LL << (VTA_ALUOP_IMM_BIT_WIDTH - 2)));
+    } else if (opcode == VTA_ALU_OPCODE_MAX) {
+      immediate[b] = static_cast<acc_T>(
+          rand_r(&globalSeed) % (1LL << (VTA_ALUOP_IMM_BIT_WIDTH - 1)) - (1LL << (VTA_ALUOP_IMM_BIT_WIDTH - 2)));
+    } else if (opcode == VTA_ALU_OPCODE_ADD) {
+      immediate[b] = static_cast<acc_T>(
+          rand_r(&globalSeed) % (1LL << (VTA_ALUOP_IMM_BIT_WIDTH - 1)) - (1LL << (VTA_ALUOP_IMM_BIT_WIDTH - 2)));
+    } else if (opcode == VTA_ALU_OPCODE_SHR) {
+      immediate[b] = static_cast<acc_T>(
+          rand_r(&globalSeed) % (1LL << (VTA_SHR_ARG_BIT_WIDTH - 1)) - (1LL << (VTA_SHR_ARG_BIT_WIDTH - 2)));
+    } else if (opcode == VTA_ALU_OPCODE_MUL) {
+      immediate[b] = static_cast<acc_T>(
+          rand_r(&globalSeed) % (1LL << (VTA_MUL_ARG_BIT_WIDTH - 1)) - (1LL << (VTA_MUL_ARG_BIT_WIDTH - 2)));
+    }
+  }
 
-//   // Initialize instructions
-//   VTAGenericInsn *insn_buf =
-//       static_cast<VTAGenericInsn *>(allocBuffer(sizeof(VTAGenericInsn) * ins_size));
-//   int insn_idx = 0;
-//   insn_buf[insn_idx++] =
-//       get1DLoadStoreInsn(VTA_OPCODE_LOAD, VTA_MEM_ID_UOP, 0, 0, uop_size, 0, 0, 0, 0);
-//   for (int b = 0; b < batch; b += VTA_BATCH) {
-//     insn_buf[insn_idx++] = get2DLoadStoreInsn(
-//         VTA_OPCODE_LOAD,                   // opcode
-//         VTA_MEM_ID_ACC,                    // vector size
-//         0,                                 // sram offset
-//         b / VTA_BATCH * tx_size * input_sets,  // dram offset
-//         1,                                 // y size
-//         tx_size * input_sets,              // x size
-//         tx_size * input_sets,              // x stride
-//         0,                                 // y pad
-//         0,                                 // x pad
-//         0,                                 // pop prev dep
-//         b > 0,                             // pop next dep
-//         0,                                 // push prev dep
-//         0);                                // push next dep
-//     insn_buf[insn_idx++] = getALUInsn(
-//         opcode,                            // opcode
-//         tx_size,                           // vector size
-//         use_imm,                           // use imm
-//         immediate[b / VTA_BATCH],          // imm
-//         uop_compression,                   // uop compression
-//         0,                                 // pop prev dep
-//         0,                                 // pop next dep
-//         0,                                 // push prev dep
-//         1);                                // push next dep
-//     insn_buf[insn_idx++] = get2DLoadStoreInsn(
-//         VTA_OPCODE_STORE,                  // opcode
-//         VTA_MEM_ID_OUT,                    // vector size
-//         0,                                 // sram offset
-//         b / VTA_BATCH * tx_size,           // dram offset
-//         1,                                 // y size
-//         tx_size,                           // x size
-//         tx_size,                           // x stride
-//         0,                                 // y pad
-//         0,                                 // x pad
-//         1,                                 // pop prev dep
-//         0,                                 // pop next dep
-//         1,                                 // push prev dep
-//         0);                                // push next dep
-//   }
-//   // Finish
-//   insn_buf[insn_idx++] = getFinishInsn(0, 1);
-//   // Prepare the uop buffer
-//   VTAUop * uop_buf = getMapALUUops(tx_size, uop_compression);
+  // Initialize instructions
+  VTAGenericInsn *insn_buf =
+      static_cast<VTAGenericInsn *>(allocBuffer(sizeof(VTAGenericInsn) * ins_size));
+  int insn_idx = 0;
+  insn_buf[insn_idx++] =
+      get1DLoadStoreInsn(VTA_OPCODE_LOAD, VTA_MEM_ID_UOP, 0, 0, uop_size, 0, 0, 0, 0);
+  for (int b = 0; b < batch; b += VTA_BATCH) {
+    insn_buf[insn_idx++] = get2DLoadStoreInsn(
+        VTA_OPCODE_LOAD,                   // opcode
+        VTA_MEM_ID_ACC,                    // vector size
+        0,                                 // sram offset
+        b / VTA_BATCH * tx_size * input_sets,  // dram offset
+        1,                                 // y size
+        tx_size * input_sets,              // x size
+        tx_size * input_sets,              // x stride
+        0,                                 // y pad
+        0,                                 // x pad
+        0,                                 // pop prev dep
+        b > 0,                             // pop next dep
+        0,                                 // push prev dep
+        0);                                // push next dep
+    insn_buf[insn_idx++] = getALUInsn(
+        opcode,                            // opcode
+        tx_size,                           // vector size
+        use_imm,                           // use imm
+        immediate[b / VTA_BATCH],          // imm
+        uop_compression,                   // uop compression
+        0,                                 // pop prev dep
+        0,                                 // pop next dep
+        0,                                 // push prev dep
+        1);                                // push next dep
+    insn_buf[insn_idx++] = get2DLoadStoreInsn(
+        VTA_OPCODE_STORE,                  // opcode
+        VTA_MEM_ID_OUT,                    // vector size
+        0,                                 // sram offset
+        b / VTA_BATCH * tx_size,           // dram offset
+        1,                                 // y size
+        tx_size,                           // x size
+        tx_size,                           // x stride
+        0,                                 // y pad
+        0,                                 // x pad
+        1,                                 // pop prev dep
+        0,                                 // pop next dep
+        1,                                 // push prev dep
+        0);                                // push next dep
+  }
+  // Finish
+  insn_buf[insn_idx++] = getFinishInsn(0, 1);
+  // Prepare the uop buffer
+  VTAUop * uop_buf = getMapALUUops(tx_size, uop_compression);
 
-// #if VTA_DEBUG == 1
-//   printInstruction(ins_size, insn_buf);
-//   printMicroOp(uop_size, uop_buf);
-// #endif
+#if VTA_DEBUG == 1
+  printInstruction(ins_size, insn_buf);
+  printMicroOp(uop_size, uop_buf);
+#endif
 
-//   // Initialize the input/output data
-//   acc_T **inputs = alloc2dArray<acc_T>(batch, vector_size * input_sets);
-//   for (int i = 0; i < batch; i++) {
-//     for (int j = 0; j < vector_size * input_sets; j++) {
-//       if (opcode == VTA_ALU_OPCODE_MIN) {
-//         inputs[i][j] = static_cast<acc_T>(
-//             rand_r(&globalSeed) % (1LL << (VTA_INP_WIDTH - 1)) - (1LL << (VTA_INP_WIDTH - 2)));
-//       } else if (opcode == VTA_ALU_OPCODE_MAX) {
-//         inputs[i][j] = static_cast<acc_T>(
-//             rand_r(&globalSeed) % (1LL << (VTA_INP_WIDTH - 1)) - (1LL << (VTA_INP_WIDTH - 2)));
-//       } else if (opcode == VTA_ALU_OPCODE_ADD) {
-//         inputs[i][j] = static_cast<acc_T>(
-//             rand_r(&globalSeed) % (1LL << (VTA_INP_WIDTH - 1)) - (1LL << (VTA_INP_WIDTH - 2)));
-//       }
-//     }
-//   }
+  // Initialize the input/output data
+  acc_T **inputs = alloc2dArray<acc_T>(batch, vector_size * input_sets);
+  for (int i = 0; i < batch; i++) {
+    for (int j = 0; j < vector_size * input_sets; j++) {
+      if (opcode == VTA_ALU_OPCODE_MIN) {
+        inputs[i][j] = static_cast<acc_T>(
+            rand_r(&globalSeed) % (1LL << (VTA_INP_WIDTH - 1)) - (1LL << (VTA_INP_WIDTH - 2)));
+      } else if (opcode == VTA_ALU_OPCODE_MAX) {
+        inputs[i][j] = static_cast<acc_T>(
+            rand_r(&globalSeed) % (1LL << (VTA_INP_WIDTH - 1)) - (1LL << (VTA_INP_WIDTH - 2)));
+      } else if (opcode == VTA_ALU_OPCODE_ADD) {
+        inputs[i][j] = static_cast<acc_T>(
+            rand_r(&globalSeed) % (1LL << (VTA_INP_WIDTH - 2)) - (1LL << (VTA_INP_WIDTH - 3)));
+      } else if (opcode == VTA_ALU_OPCODE_SHR) {
+        inputs[i][j] = static_cast<acc_T>(
+            rand_r(&globalSeed) % (1LL << (VTA_SHR_ARG_BIT_WIDTH - 1)) - (1LL << (VTA_SHR_ARG_BIT_WIDTH - 2)));
+      } else if (opcode == VTA_ALU_OPCODE_MUL) {
+        inputs[i][j] = static_cast<acc_T>(
+            rand_r(&globalSeed) % (1LL << (VTA_MUL_ARG_BIT_WIDTH - 1)) - (1LL << (VTA_MUL_ARG_BIT_WIDTH - 2)));
+      }
+    }
+  }
 
-//   // Compute reference output
-//   out_T **outputs_ref = alloc2dArray<out_T>(batch, vector_size);
-//   for (int i = 0; i < batch; i++) {
-//     for (int j = 0; j < vector_size; j++) {
-//       acc_T tmp = 0;
-//       if (opcode == VTA_ALU_OPCODE_MIN) {
-//         if (!use_imm) {
-//           tmp = inputs[i][j] < inputs[i][j + vector_size] ?
-//                     inputs[i][j] :
-//                     inputs[i][j + vector_size];
-//         } else {
-//           tmp = inputs[i][j] < immediate[i / VTA_BATCH] ?
-//                     inputs[i][j] :
-//                     immediate[i / VTA_BATCH];
-//         }
-//       } else if (opcode == VTA_ALU_OPCODE_MAX) {
-//         if (!use_imm) {
-//           tmp = inputs[i][j] > inputs[i][j + vector_size] ?
-//                     inputs[i][j] :
-//                     inputs[i][j + vector_size];
-//         } else {
-//           tmp = inputs[i][j] > immediate[i / VTA_BATCH] ?
-//                     inputs[i][j] :
-//                     immediate[i / VTA_BATCH];
-//         }
-//       } else if (opcode == VTA_ALU_OPCODE_ADD) {
-//         if (!use_imm) {
-//           tmp = inputs[i][j] + inputs[i][j + vector_size];
-//         } else {
-//           tmp = inputs[i][j] + immediate[i / VTA_BATCH];
-//         }
-//       } else if (opcode == VTA_ALU_OPCODE_SHR) {
-//         if (immediate[i / VTA_BATCH] >= 0) {
-//           tmp = inputs[i][j] >> immediate[i / VTA_BATCH];
-//         } else {
-//           tmp = inputs[i][j] << (0 - immediate[i / VTA_BATCH]);
-//         }
-//       }
-//       // Set
-//       outputs_ref[i][j] = (out_T) tmp;
-//     }
-//   }
+  // Compute reference output
+  out_T **outputs_ref = alloc2dArray<out_T>(batch, vector_size);
+  for (int i = 0; i < batch; i++) {
+    for (int j = 0; j < vector_size; j++) {
+      acc_T out_val = 0;
+      acc_T imm_val = immediate[i / VTA_BATCH];
+      acc_T src_val = inputs[i][j + vector_size];
+      if (opcode == VTA_ALU_OPCODE_MIN) {
+        if (!use_imm) {
+          out_val = inputs[i][j] < src_val ? inputs[i][j] : src_val;
+        } else {
+          out_val = inputs[i][j] < imm_val ? inputs[i][j] : imm_val;
+        }
+      } else if (opcode == VTA_ALU_OPCODE_MAX) {
+        if (!use_imm) {
+          out_val = inputs[i][j] > src_val ? inputs[i][j] : src_val;
+        } else {
+          out_val = inputs[i][j] > imm_val ? inputs[i][j] : imm_val;
+        }
+      } else if (opcode == VTA_ALU_OPCODE_ADD) {
+        if (!use_imm) {
+          out_val = inputs[i][j] + src_val;
+        } else {
+          out_val = inputs[i][j] + imm_val;
+        }
+      } else if (opcode == VTA_ALU_OPCODE_SHR) {
+        if (!use_imm) {
+          if (src_val >= 0) {
+            out_val = inputs[i][j] >> src_val;
+          } else {
+            out_val = inputs[i][j] << (0 - src_val);
+          }
+        } else {
+          if (imm_val >= 0) {
+            out_val = inputs[i][j] >> imm_val;
+          } else {
+            out_val = inputs[i][j] << (0 - imm_val);
+          }
+        }
+      } else if (opcode == VTA_ALU_OPCODE_MUL) {
+        if (!use_imm) {
+          out_val = inputs[i][j] * src_val;
+        } else {
+          out_val = inputs[i][j] * imm_val;
+        }
+      }
+      // Set
+      outputs_ref[i][j] = (out_T) out_val;
+    }
+  }
 
-//   // Pack input buffer
-//   axi_T *bias_buf =
-//       static_cast<axi_T *>(allocBuffer(VTA_ACC_ELEM_BYTES * batch * tx_size * input_sets));
-//   packBuffer<axi_T, VTA_AXI_WIDTH, acc_T, VTA_ACC_WIDTH>(
-//       bias_buf, inputs, batch, vector_size * input_sets, VTA_BATCH, VTA_BLOCK_OUT);
+  // Pack input buffer
+  axi_T *bias_buf =
+      static_cast<axi_T *>(allocBuffer(VTA_ACC_ELEM_BYTES * batch * tx_size * input_sets));
+  packBuffer<axi_T, VTA_AXI_WIDTH, acc_T, VTA_ACC_WIDTH>(
+      bias_buf, inputs, batch, vector_size * input_sets, VTA_BATCH, VTA_BLOCK_OUT);
 
-//   // Prepare output buffer
-//   axi_T *output_buf =
-//       static_cast<axi_T *>(allocBuffer(VTA_OUT_ELEM_BYTES * batch * tx_size * input_sets));
+  // Prepare output buffer
+  axi_T *output_buf =
+      static_cast<axi_T *>(allocBuffer(VTA_OUT_ELEM_BYTES * batch * tx_size * input_sets));
 
-// #ifdef NO_SIM
-//   // Invoke the VTA
-//   uint64_t t_fpga = vta(ins_size, insn_buf, uop_buf, NULL, NULL, bias_buf, output_buf);
-//   // Report on timining
-//   printf("INFO - Synchronization time: %.3fms\n", static_cast<float>(t_fpga) / 1E6);
-//   printf("INFO - Throughput: %.3fGOps/s\n", static_cast<float>(vector_size * batch) / t_fpga);
-// #else
-//   // Invoke the VTA
-//   vta(ins_size,
-//       (volatile insn_T *) insn_buf,
-//       (volatile uop_T *) uop_buf,
-//       (volatile axi_T *) NULL,
-//       (volatile axi_T *) NULL,
-//       (volatile axi_T *) bias_buf,
-//       (volatile axi_T *) output_buf);
-// #endif
+#ifdef NO_SIM
+  // Invoke the VTA
+  uint64_t t_fpga = vta(ins_size, insn_buf, uop_buf, NULL, NULL, bias_buf, output_buf);
+  // Report on timining
+  printf("INFO - Synchronization time: %.3fms\n", static_cast<float>(t_fpga) / 1E6);
+  printf("INFO - Throughput: %.3fGOps/s\n", static_cast<float>(vector_size * batch) / t_fpga);
+#else
+  // Invoke the VTA
+  vta(ins_size,
+      (volatile insn_T *) insn_buf,
+      (volatile uop_T *) uop_buf,
+      (volatile axi_T *) NULL,
+      (volatile axi_T *) NULL,
+      (volatile axi_T *) bias_buf,
+      (volatile axi_T *) output_buf);
+#endif
 
-//   // Unpack output buffer
-//   out_T **outputs = alloc2dArray<out_T>(batch, vector_size);
-//   unpackBuffer<out_T, VTA_OUT_WIDTH, axi_T, VTA_AXI_WIDTH>(outputs,
-//                                                            output_buf,
-//                                                            batch,
-//                                                            vector_size,
-//                                                            VTA_BATCH,
-//                                                            VTA_BLOCK_OUT);
+  // Unpack output buffer
+  out_T **outputs = alloc2dArray<out_T>(batch, vector_size);
+  unpackBuffer<out_T, VTA_OUT_WIDTH, axi_T, VTA_AXI_WIDTH>(outputs,
+                                                           output_buf,
+                                                           batch,
+                                                           vector_size,
+                                                           VTA_BATCH,
+                                                           VTA_BLOCK_OUT);
 
-//   // Correctness checks
-//   int err = 0;
-//   for (int i = 0; i < batch; i++) {
-//     for (int j = 0; j < vector_size; j++) {
-//       if (outputs_ref[i][j] != outputs[i][j]) {
-//         err++;
-// #if VTA_DEBUG == 1
-//         printf("DEBUG - %d, %d: expected 0x%x but got 0x%x\n", i, j,
-//                static_cast<int>(outputs_ref[i][j]),
-//                static_cast<int>(outputs[i][j]));
-// #endif
-//       }
-//     }
-//   }
+  // Correctness checks
+  int err = 0;
+  for (int i = 0; i < batch; i++) {
+    for (int j = 0; j < vector_size; j++) {
+      if (outputs_ref[i][j] != outputs[i][j]) {
+        err++;
+#if VTA_DEBUG == 1
+        printf("DEBUG - %d, %d: expected 0x%x but got 0x%x\n", i, j,
+               static_cast<int>(outputs_ref[i][j]),
+               static_cast<int>(outputs[i][j]));
+#endif
+      }
+    }
+  }
 
-//   // Free all allocated arrays
-//   free(immediate);
-//   free2dArray<acc_T>(inputs, batch, vector_size * input_sets);
-//   free2dArray<out_T>(outputs_ref, batch, vector_size);
-//   free2dArray<out_T>(outputs, batch, vector_size);
-//   freeBuffer(insn_buf);
-//   freeBuffer(uop_buf);
-//   freeBuffer(bias_buf);
-//   freeBuffer(output_buf);
+  // Free all allocated arrays
+  free(immediate);
+  free2dArray<acc_T>(inputs, batch, vector_size * input_sets);
+  free2dArray<out_T>(outputs_ref, batch, vector_size);
+  free2dArray<out_T>(outputs, batch, vector_size);
+  freeBuffer(insn_buf);
+  freeBuffer(uop_buf);
+  freeBuffer(bias_buf);
+  freeBuffer(output_buf);
 
-//   if (err == 0) {
-//     printf("INFO - ALU test successful!\n");
-//     return 0;
-//   } else {
-//     printf("INFO - ALU test failed, got %d errors!\n", err);
-//     return -1;
-//   }
-// }
+  if (err == 0) {
+    printf("INFO - ALU test successful!\n");
+    return 0;
+  } else {
+    printf("INFO - ALU test failed, got %d errors!\n", err);
+    return -1;
+  }
+}
 
 int blocked_gemm_test(int batch, int channels, int block, bool uop_compression,
     int virtual_threads) {

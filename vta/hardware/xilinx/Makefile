@@ -16,13 +16,9 @@ HSI = hsi
 # HLS mode
 MODE = all
 # Debug flag
-DEBUG = false
+DEBUG = False
 # SLURM
-SLURM = false
-# Prevent generation of DSP
-NO_DSP = false
-# Prevent generation of ALU
-NO_ALU = true
+SLURM = False
 
 # Process VTA JSON config
 VTA_CONFIG = python $(CURDIR)/../../config/vta_config.py
@@ -44,6 +40,8 @@ VTA_INP_BUFF_SIZE := $(shell ${VTA_CONFIG} --get-inpbuffsize)
 VTA_WGT_BUFF_SIZE := $(shell ${VTA_CONFIG} --get-wgtbuffsize)
 VTA_ACC_BUFF_SIZE := $(shell ${VTA_CONFIG} --get-accbuffsize)
 VTA_OUT_BUFF_SIZE := $(shell ${VTA_CONFIG} --get-outbuffsize)
+VTA_ALU_EN := $(shell ${VTA_CONFIG} --get-aluen)
+VTA_MUL_EN := $(shell ${VTA_CONFIG} --get-mulen)
 
 #---------------------
 # FPGA Parameters
@@ -87,7 +85,8 @@ $(IP_PATH): $(SRC_DIR)/*
 	cd $(IP_BUILD_PATH) && \
 		$(VIVADO_HLS) -f $(SCRIPT_DIR)/hls.tcl \
 		-tclargs $(SRC_DIR) $(SIM_DIR) $(TEST_DIR) $(INCLUDE_DIR) \
-		$(MODE) $(DEBUG) $(NO_DSP) $(NO_ALU) $(VTA_TARGET_PER) $(VTA_GEMM_II) $(VTA_TALU_II) \
+		$(MODE) $(DEBUG) $(VTA_ALU_EN) $(VTA_MUL_EN) \
+		$(VTA_TARGET_PER) $(VTA_GEMM_II) $(VTA_TALU_II) \
 		$(VTA_INP_WIDTH) $(VTA_WGT_WIDTH) $(VTA_ACC_WIDTH) $(VTA_OUT_WIDTH) \
 		$(VTA_BATCH) $(VTA_IN_BLOCK) $(VTA_OUT_BLOCK) \
 		$(VTA_UOP_BUFF_SIZE) $(VTA_INP_BUFF_SIZE) $(VTA_WGT_BUFF_SIZE) \

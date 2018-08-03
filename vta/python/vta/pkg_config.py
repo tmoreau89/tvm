@@ -22,9 +22,13 @@ class PkgConfig(object):
     """
     cfg_keys = [
         "TARGET",
+        "HW_VER",
         "HW_FREQ",
         "HW_CLK_TARGET",
-        "HW_VER",
+        "ALU_EN",
+        "MUL_EN",
+        "GEMM_II",
+        "TALU_II",
         "LOG_INP_WIDTH",
         "LOG_WGT_WIDTH",
         "LOG_ACC_WIDTH",
@@ -35,7 +39,7 @@ class PkgConfig(object):
         "LOG_UOP_BUFF_SIZE",
         "LOG_INP_BUFF_SIZE",
         "LOG_WGT_BUFF_SIZE",
-        "LOG_ACC_BUFF_SIZE",
+        "LOG_ACC_BUFF_SIZE"
     ]
     def __init__(self, cfg, proj_root):
         # include path

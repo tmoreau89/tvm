@@ -35,22 +35,25 @@ typedef ap_uint<VTA_AXI_WIDTH> axi_T;
 typedef ap_uint<VTA_UOP_WIDTH> uop_T;
 
 /* \typedef inp_T Input datatype*/
-typedef ap_uint<VTA_INP_WIDTH> inp_T;
+typedef ap_int<VTA_INP_WIDTH> inp_T;
 
 /* \typedef wgt_T Weight datatype*/
-typedef ap_uint<VTA_WGT_WIDTH> wgt_T;
+typedef ap_int<VTA_WGT_WIDTH> wgt_T;
 
 /* \typedef out_T Output datatype*/
-typedef ap_uint<VTA_OUT_WIDTH> out_T;
+typedef ap_int<VTA_OUT_WIDTH> out_T;
 
 /* \typedef acc_T Accumulator datatype*/
-typedef ap_uint<VTA_ACC_WIDTH> acc_T;
+typedef ap_int<VTA_ACC_WIDTH> acc_T;
+
+/* \typedef acc_T Accumulator datatype*/
+typedef ap_int<VTA_REG_WIDTH> reg_T;
 
 /* \typedef mul_T Multiplier output datatype*/
-typedef ap_uint<VTA_WGT_WIDTH+VTA_INP_WIDTH+1> mul_T;
+typedef ap_int<VTA_WGT_WIDTH+VTA_INP_WIDTH+1> mul_T;
 
 /* \typedef sum_T GEMM accumulator datatype*/
-typedef ap_uint<VTA_WGT_WIDTH+VTA_INP_WIDTH+VTA_LOG_BLOCK_IN+1> sum_T;
+typedef ap_int<VTA_WGT_WIDTH+VTA_INP_WIDTH+VTA_LOG_BLOCK_IN+1> sum_T;
 
 /* \typedef uop_idx_T Micro-op SRAM index datatype*/
 typedef ap_uint<VTA_LOG_UOP_BUFF_DEPTH+1> uop_idx_T;
@@ -94,11 +97,14 @@ typedef ap_uint<VTA_MEMOP_PAD_BIT_WIDTH> memop_pad_T;
 /* \typedef aluop_opcode_T ALU operation opcode datatype*/
 typedef ap_uint<VTA_ALU_OPCODE_BIT_WIDTH> aluop_opcode_T;
 
-/* \typedef aluop_opcode_T ALU operation immediate datatype*/
+/* \typedef aluop_imm_T ALU operation immediate datatype*/
 typedef ap_int<VTA_ALUOP_IMM_BIT_WIDTH> aluop_imm_T;
 
-/* \typedef aluop_opcode_T ALU operation shift immediate datatype*/
-typedef ap_int<VTA_LOG_ACC_WIDTH> aluop_sh_imm_T;
+/* \typedef aluop_shr_arg_T ALU operation shift right immediate datatype*/
+typedef ap_int<VTA_SHR_ARG_BIT_WIDTH> aluop_shr_arg_T;
+
+/* \typedef aluop_mul_arg_T ALU operation multiply datatype*/
+typedef ap_int<VTA_MUL_ARG_BIT_WIDTH> aluop_mul_arg_T;
 
 /*!
 * \brief Fetch module.

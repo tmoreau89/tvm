@@ -43,6 +43,10 @@ def download_bitstream():
 
     env = get_env()
 
+    if env.TARGET == "sim":
+        print("Skipping programming phase in sim mode")
+        return True
+
     success = False
     bit = get_bitstream_path()
     url = os.path.join(BITSTREAM_URL, env.TARGET)
