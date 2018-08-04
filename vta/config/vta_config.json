@@ -8,14 +8,14 @@
   "GEMM_II" : 1,
   "TALU_II" : 2,
   "LOG_INP_WIDTH" : 3,
-  "LOG_WGT_WIDTH" : 1,
+  "LOG_WGT_WIDTH" : 3,
   "LOG_ACC_WIDTH" : 5,
   "LOG_OUT_WIDTH" : 3,
   "LOG_BATCH" : 0,
-  "LOG_BLOCK_IN" : 5,
-  "LOG_BLOCK_OUT" : 5,
+  "LOG_BLOCK_IN" : 4,
+  "LOG_BLOCK_OUT" : 4,
   "LOG_UOP_BUFF_SIZE" : 15,
-  "LOG_INP_BUFF_SIZE" : 16,
+  "LOG_INP_BUFF_SIZE" : 15,
   "LOG_WGT_BUFF_SIZE" : 18,
   "LOG_ACC_BUFF_SIZE" : 17
 }

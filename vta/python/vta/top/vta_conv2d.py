@@ -11,6 +11,8 @@ from nnvm.top import registry as reg, OpPattern
 from nnvm.top import nn as _nn
 from ..environment import get_env
 from ..ptr_alias import reinterpret
+from .vta_group_conv2d import packed_group_conv2d, schedule_packed_group_conv2d
+
 
 Workload = namedtuple("Conv2DWorkload",
                       ['batch', 'height', 'width', 'in_filter', 'out_filter',
@@ -262,22 +264,26 @@ def compute_conv2d(attrs, inputs, out):
 
     assert dilation == (1, 1), "not support dilate now"
     if is_packed_layout(layout):
-        assert groups == 1
-        env = get_env()
-        assert env.LOG_INP_WIDTH == 3, "only support 8bit inp for now"
-        assert env.LOG_OUT_WIDTH == 3, "only support 8bit inp for now"
-        inputs = list(inputs)
-        w_pack_factor = 1 << (3 - env.LOG_WGT_WIDTH)
-        assert inputs[1].dtype == "int8"
+        if groups == 1:
+            assert groups == 1
+            env = get_env()
+            assert env.LOG_INP_WIDTH == 3, "only support 8bit inp for now"
+            assert env.LOG_OUT_WIDTH == 3, "only support 8bit inp for now"
+            inputs = list(inputs)
+            w_pack_factor = 1 << (3 - env.LOG_WGT_WIDTH)
+            assert inputs[1].dtype == "int8"
 
-        # Apply bit packing if necessary
-        if w_pack_factor != 1:
-            kshape = list(topi.util.get_const_tuple(inputs[1].shape))
-            kshape[-1] *= w_pack_factor
-            inputs[1] = reinterpret(inputs[1], kshape, dtype=env.wgt_dtype)
+            # Apply bit packing if necessary
+            if w_pack_factor != 1:
+                kshape = list(topi.util.get_const_tuple(inputs[1].shape))
+                kshape[-1] *= w_pack_factor
+                inputs[1] = reinterpret(inputs[1], kshape, dtype=env.wgt_dtype)
 
-        return packed_conv2d(inputs[0], inputs[1],
-                             padding, strides, out_dtype=out_dtype)
+            return packed_conv2d(inputs[0], inputs[1],
+                                 padding, strides, out_dtype=out_dtype)
+        else:
+            return packed_group_conv2d(inputs[0], inputs[1],
+                                       padding, strides, groups, out_dtype=out_dtype)
     return _nn.compute_conv2d(attrs, inputs, out)
 
 
@@ -286,12 +292,16 @@ def schedule_conv2d(attrs, outs, target):
     """ 2D convolution schedule.
     """
     layout = attrs["layout"]
+    groups = attrs.get_int('groups')
 
     if is_packed_layout(layout):
         target = tvm.target.create(target)
         if target.device_name == "vta":
-            return schedule_packed_conv2d(outs)
-        if str(target).startswith("llvm"):
+            if groups == 1:
+                return schedule_packed_conv2d(outs)
+            else:
+                return schedule_packed_group_conv2d(outs)
+        elif str(target).startswith("llvm"):
             return tvm.create_schedule([x.op for x in outs])
         raise RuntimeError("not support target %s" % target)
     return _nn.schedule_conv2d(attrs, outs, target)
