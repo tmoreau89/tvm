@@ -27,6 +27,19 @@ def clear_stats():
     if f:
         f()
 
+# debug flag to skip execution.
+DEBUG_SKIP_EXEC = 1
+
+def debug_mode(flag):
+    """Set debug mode
+
+    Paramaters
+    ----------
+    flag : int
+        The debug flag, 0 means clear all flags.
+    """
+    tvm.get_global_func("vta.simulator.profiler_debug_mode")(flag)
+
 
 def stats():
     """Clear profiler statistics
