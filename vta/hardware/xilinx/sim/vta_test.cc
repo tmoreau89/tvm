@@ -60,13 +60,13 @@ int main(void) {
 #endif // ALU_EN
 
     // Run blocked GEMM test
-    status |= blocked_gemm_test(256, 256, VTA_BLOCK_OUT*4, true, 2);
+    // status |= blocked_gemm_test(256, 256, VTA_BLOCK_OUT*4, true, 2);
     status |= blocked_gemm_test(256, 256, VTA_BLOCK_OUT*4, false, 2);
-    status |= blocked_gemm_test(256, 256, VTA_BLOCK_OUT*4, true, 1);
+    // status |= blocked_gemm_test(256, 256, VTA_BLOCK_OUT*4, true, 1);
     status |= blocked_gemm_test(256, 256, VTA_BLOCK_OUT*4, false, 1);
 
     // Simple GEMM unit test
-    status |= gemm_test(4 * VTA_BATCH, 4 * VTA_BLOCK_OUT, 4 * VTA_BLOCK_IN, true);
+    status |= gemm_test(4 * VTA_BATCH, 4 * VTA_BLOCK_OUT, 4 * VTA_BLOCK_IN, false);
 
     return status;
 }

@@ -150,7 +150,7 @@ class Environment(object):
         self._dev_ctx = None
         self._last_env = None
         #  derive bitstream name
-        self.BITSTREAM = "{}_{}x{}x{}_a{}w{}o{}_{}_{}_{}_{}_{}MHz_{}ns_gii{}".format(
+        self.BITSTREAM = "{}/bitstreams_valid/{}x{}x{}_a{}w{}o{}_{}_{}_{}_{}_{}MHz_{}ns_gii{}".format(
             self.HW_VER.replace('.', '_'),
             self.BATCH,
             self.BLOCK_IN,

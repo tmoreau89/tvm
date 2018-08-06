@@ -526,7 +526,7 @@ class Device {
 
   template<bool use_imm, typename F>
   void RunALULoop(const VTAAluInsn* op, F func) {
-    prof_->alu_counter += op->iter_out * op->iter_in * op->uop_end - op->uop_bgn;
+    prof_->alu_counter += op->iter_out * op->iter_in * (op->uop_end - op->uop_bgn);
     if (prof_->SkipExec()) return;
     for (int y = 0; y < op->iter_out; ++y) {
       for (int x = 0; x < op->iter_in; ++x) {

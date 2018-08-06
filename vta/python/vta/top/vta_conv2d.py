@@ -6,6 +6,7 @@ from collections import namedtuple
 import logging
 import tvm
 import topi
+import re
 
 from nnvm.top import registry as reg, OpPattern
 from nnvm.top import nn as _nn
@@ -339,7 +340,7 @@ def _get_workload(data, pad_data, kernel, output):
     w_str = (i_w + w_pad*2 - k_w) // (o_w - 1)
     return Workload(i_b, i_h, i_w, i_c, o_c, k_h, k_w, h_pad, w_pad, h_str, w_str)
 
-def schedule_packed_conv2d(outs, plan=None, skip_load_inp=False, skip_load_wgt=False,
+def schedule_packed_conv2d(outs, planStr=None, skip_load_inp=False, skip_load_wgt=False,
                            skip_load_acc=False, skip_store_out=False, skip_alu=False,
                            skip_gemm=False):
     """ Schedule the packed conv2d.
@@ -376,7 +377,23 @@ def schedule_packed_conv2d(outs, plan=None, skip_load_inp=False, skip_load_wgt=F
     else:
         pad_data = None
     wrkld = _get_workload(data, pad_data, kernel, output)
-    if plan is None:
+    if planStr:
+      matchObj = re.match( r'b(\d+)oc(\d+)ic(\d+)h(\d+)w(\d+)oc_t(\d+)h_t(\d+)', sched_str)
+      b_factor = int(matchObj.group(1))
+      oc_factor = int(matchObj.group(2))
+      ic_factor = int(matchObj.group(3))
+      h_factor = int(matchObj.group(4))
+      w_factor = int(matchObj.group(5))
+      oc_nthread = int(matchObj.group(6))
+      h_nthread = int(matchObj.group(7))
+      plan = Schedule(b_factor=b_factor,
+                      oc_factor=oc_factor,
+                      ic_factor=ic_factor,
+                      h_factor=h_factor,
+                      w_factor=w_factor,
+                      oc_nthread=oc_nthread,
+                      h_nthread=h_nthread)
+    else:
         plan = find_schedules(wrkld, vt_only=True, best_only=True)[0]
         logging.info("Trying to find plan for %s", wrkld)
     env = get_env()
