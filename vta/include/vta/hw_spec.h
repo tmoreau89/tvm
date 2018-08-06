@@ -35,6 +35,8 @@ extern "C" {
 #define VTA_OUT_WIDTH (1 << VTA_LOG_OUT_WIDTH)
 /*! Accumulator data type width */
 #define VTA_ACC_WIDTH (1 << VTA_LOG_ACC_WIDTH)
+/*! Accumulator truncation bits */
+#define VTA_ACC_TRUC_BITS 24
 /*! log2 of ALU data type width */
 #define VTA_LOG_ALU_WIDTH (VTA_LOG_ACC_WIDTH - 1)
 /*! ALU data type width */

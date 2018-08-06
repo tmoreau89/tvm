@@ -19,6 +19,9 @@ Workload = namedtuple("Conv2DWorkload",
                       ['batch', 'height', 'width', 'in_filter', 'out_filter',
                        'hkernel', 'wkernel', 'hpad', 'wpad', 'hstride', 'wstride'])
 
+_SCHEDULE_STR_MAP = {}
+
+
 def find_schedules(layer, vt_only=False, best_only=False):
     """ Returns a schedule for a given a layer.
 
@@ -414,6 +417,11 @@ def schedule_packed_conv2d(outs, planStr=None, skip_load_inp=False, skip_load_wg
     else:
         pad_data = None
     wrkld = _get_workload(data, pad_data, kernel, output)
+
+    if wrkld in _SCHEDULE_STR_MAP and planStr is None:
+        planStr = _SCHEDULE_STR_MAP[wrkld]
+        logging.info("Apply pre-cached schedule for %s->%s", str(wrkld) , planStr)
+
     if planStr:
       matchObj = re.match( r'b(\d+)_oc(\d+)_ic(\d+)_h(\d+)_w(\d+)_oct(\d+)_ht(\d+)', planStr)
       b_factor = int(matchObj.group(1))

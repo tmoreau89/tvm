@@ -423,6 +423,14 @@ class Device {
     }
   }
 
+  int32_t IntTrunc(int32_t value, int32_t bits) {
+    if (bits >= 32) return value;
+    int leftbits = (32 - bits);
+    value = value & ((1 << bits) -1);
+    value = (value << leftbits) >> leftbits;
+    return value;
+  }
+
   void RunGEMM(const VTAGemInsn* op) {
     if (!op->reset_reg) {
       prof_->gemm_counter += op->iter_out * op->iter_in * (op->uop_end - op->uop_bgn);
@@ -452,6 +460,7 @@ class Device {
                   sum +=
                       inp.GetSigned(i * VTA_BLOCK_IN + k) *
                       wgt.GetSigned(j * VTA_BLOCK_IN + k);
+                  sum = IntTrunc(sum, VTA_ACC_TRUC_BITS);
                 }
                 acc.SetSigned(acc_offset, sum);
               }
@@ -540,11 +549,13 @@ class Device {
           BitPacker<VTA_ACC_WIDTH> dst(acc_.BeginPtr(dst_index));
           BitPacker<VTA_ACC_WIDTH> src(acc_.BeginPtr(src_index));
           for (int k = 0; k < VTA_BLOCK_OUT; ++k) {
+            int32_t value;
             if (use_imm) {
-              dst.SetSigned(k, func(dst.GetSigned(k), op->imm));
+              value = func(dst.GetSigned(k), op->imm);
             } else {
-              dst.SetSigned(k, func(dst.GetSigned(k), src.GetSigned(k)));
+              value = func(dst.GetSigned(k), src.GetSigned(k));
             }
+            dst.SetSigned(k, IntTrunc(value, VTA_ACC_TRUC_BITS));
           }
         }
       }

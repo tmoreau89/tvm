@@ -238,7 +238,9 @@ def test_vta_conv2d():
             return a_np, w_np, b_np
 
         def verify(s, check_correctness):
-            mod = vta.build(s, [data, kernel_arg, bias, coeff, res], "ext_dev",
+            mod = vta.build(s,
+                            [data, kernel_arg, bias, coeff, res],
+                            "ext_dev",
                             env.target_host, name="conv2d")
             temp = util.tempdir()
 
