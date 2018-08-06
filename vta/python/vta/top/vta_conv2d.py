@@ -415,7 +415,7 @@ def schedule_packed_conv2d(outs, planStr=None, skip_load_inp=False, skip_load_wg
         pad_data = None
     wrkld = _get_workload(data, pad_data, kernel, output)
     if planStr:
-      matchObj = re.match( r'b(\d+)_oc(\d+)_ic(\d+)_h(\d+)_w(\d+)_oct(\d+)_ht(\d+)', sched_str)
+      matchObj = re.match( r'b(\d+)_oc(\d+)_ic(\d+)_h(\d+)_w(\d+)_oct(\d+)_ht(\d+)', planStr)
       b_factor = int(matchObj.group(1))
       oc_factor = int(matchObj.group(2))
       ic_factor = int(matchObj.group(3))
