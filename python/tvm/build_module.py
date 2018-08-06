@@ -386,6 +386,7 @@ def lower(sch,
     stmt = ir_pass.RemoveNoOp(stmt)
     if not cfg.disable_select_rewriting:
         stmt = ir_pass.RewriteUnsafeSelect(stmt)
+    stmt = ir_pass.CanonicalSimplify(stmt)
     for f in lower_phase3:
         stmt = f(stmt)
     # Instrument BoundCheckers

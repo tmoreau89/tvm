@@ -68,7 +68,7 @@ def test_vta_group_conv2d():
         padding = (wl.hpad, wl.wpad)
         groups = wl.groups
 
-        @memoize("vta.tests.test_benchmark_topi.conv2d.verify_nhwc")
+        @memoize("vta.tests.test_group_conv2d")
         def get_ref_data():
             a_np = (np.random.uniform(size=a_shape) * 4).astype(data_dtype)
             w_np = (np.random.uniform(size=w_shape) * 4).astype(kernel_dtype)
@@ -115,9 +115,6 @@ def test_vta_group_conv2d():
             res_unpack = res_arr.asnumpy().transpose(
                 (0, 4, 1, 5, 2, 3)).reshape(batch_size, wl.out_filter, fout_height, fout_width)
             if check_correctness:
-                assert wl.hpad == wl.wpad
-                stride = (wl.hstride, wl.wstride)
-                padding = (wl.hpad, wl.wpad)
                 res_ref = res_ref >> 8
                 res_ref += bias_orig.reshape(wl.out_filter, 1, 1)
                 res_ref = np.clip(res_ref, 0, 127).astype("int8")

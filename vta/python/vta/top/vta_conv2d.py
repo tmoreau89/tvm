@@ -13,7 +13,7 @@ from nnvm.top import nn as _nn
 from ..environment import get_env
 from ..ptr_alias import reinterpret
 from .vta_group_conv2d import packed_group_conv2d, schedule_packed_group_conv2d
-
+from .vta_conv2d_transpose import packed_conv2d_transpose, schedule_packed_conv2d_transpose
 
 Workload = namedtuple("Conv2DWorkload",
                       ['batch', 'height', 'width', 'in_filter', 'out_filter',
@@ -155,6 +155,7 @@ def find_schedules(layer, vt_only=False, best_only=False):
     if best_only:
         return [fil_sched[xfer_size.index(min(xfer_size))]]
     return fil_sched
+
 
 def packed_conv2d(data,
                   kernel,
@@ -307,6 +308,42 @@ def schedule_conv2d(attrs, outs, target):
         raise RuntimeError("not support target %s" % target)
     return _nn.schedule_conv2d(attrs, outs, target)
 
+
+@reg.register_compute("conv2d_transpose", level=15)
+def compute_conv2d_transpose(attrs, inputs, out):
+    """ 2D convolution algorithm.
+    """
+    padding = attrs.get_int_tuple("padding")
+    strides = attrs.get_int_tuple("strides")
+    dilation = attrs.get_int_tuple("dilation")
+    layout = attrs["layout"]
+    out_dtype = attrs['out_dtype']
+
+    print(inputs)
+
+    assert dilation == (1, 1), "not support dilate now"
+    if is_packed_layout(layout):
+        return packed_conv2d_transpose(inputs[0], inputs[1],
+                                       padding, strides,
+                                       out_dtype=out_dtype)
+    return _nn.compute_conv2d_transpose(attrs, inputs, out)
+
+
+@reg.register_schedule("conv2d_transpose", level=15)
+def schedule_conv2d_transpose(attrs, outs, target):
+    """ 2D convolution schedule.
+    """
+    layout = attrs["layout"]
+
+    if is_packed_layout(layout):
+        target = tvm.target.create(target)
+        if target.device_name == "vta":
+            return schedule_packed_conv2d_transpose(outs)
+        elif str(target).startswith("llvm"):
+            return tvm.create_schedule([x.op for x in outs])
+        else:
+            raise RuntimeError("not support target %s" % target)
+    return _nn.schedule_conv2d_transpose(attrs, outs, target)
 
 def _get_workload(data, pad_data, kernel, output):
     """ Get the workload structure.

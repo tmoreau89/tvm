@@ -4,116 +4,49 @@ from collections import namedtuple
 import tvm
 import topi
 from topi.util import get_const_int, get_const_tuple
-from tvm.contrib.util import get_lower_ir
 
 from ..environment import get_env
 
-Workload = namedtuple("GroupConv2DWorkload",
-                      ('batch', 'height', 'width', 'in_filter', 'out_filter', 'groups',
-                       'hkernel', 'wkernel', 'hpad', 'wpad', 'hstride', 'wstride'))
+Workload = namedtuple("DenseWorkload",
+                      ('batch', 'in_dim', 'out_dim'))
 
-Schedule = namedtuple("GroupConv2DSchedule",
-                      ('b_factor', 'oc_factor', 'ic_factor', 'h_factor', 'w_factor',
-                       'oc_nthread', 'h_nthread', 'debug_sync'))
+Schedule = namedtuple("GroupConv2DSchedule", ('factor', ))
 
 
 def find_schedules(layer, vt_only=False, best_only=False):
     return [Schedule(0, 0, 1, 0, 0, 0, 0, False)]
 
 
-def _get_workload(data, pad_data, kernel, output):
-    """ Get the workload structure.
-    """
-    o_shape = get_const_tuple(output.shape)
-    d_shape = get_const_tuple(data.shape)
-    k_shape = get_const_tuple(kernel.shape)
-    o_b, o_c, o_h, o_w, ob_blk, o_blk = o_shape
-    i_b, i_c, i_h, i_w, ib_blk, i_blk = d_shape
-    k_o, k_i, k_h, k_w, ko_blk, ki_blk = k_shape
-    # For now we need to assume that input channel blocking is the same
-    # as the output channel blocking
-    assert o_blk == i_blk
-    assert ob_blk == ib_blk
-    # Make sure that dimensions match
-    assert o_b == i_b
-    assert o_blk == ko_blk
-    assert i_blk == ki_blk
-    assert k_o == o_c
-    groups = i_c // k_i
-    assert i_c % groups == 0
-    assert o_c % groups == 0
-
-    # Scale the channel size
-    i_c *= i_blk
-    o_c *= o_blk
-    if pad_data is not None:
-        p_shape = topi.util.get_const_tuple(pad_data.shape)
-        h_pad = (p_shape[2] - d_shape[2]) // 2
-        w_pad = (p_shape[3] - d_shape[3]) // 2
-    else:
-        h_pad, w_pad = 0, 0
-    h_str = (i_h + h_pad*2 - k_h) // (o_h - 1)
-    w_str = (i_w + w_pad*2 - k_w) // (o_w - 1)
-    return Workload(i_b, i_h, i_w, i_c, o_c, groups, k_h, k_w, h_pad, w_pad, h_str, w_str)
-
-
-def packed_group_conv2d(data,
-                        kernel,
-                        padding,
-                        strides,
-                        group,
-                        out_dtype="int32"):
+def packed_dense(data,
+                 weight,
+                 out_dtype="int32"):
     """ Packed conv2d function."""
+    env = get_env()
 
-    if padding[0]:
-        pad_data = topi.nn.pad(data, [0, 0, padding[0], padding[1], 0, 0], name="pad_data")
-    else:
-        pad_data = data
+    N, IN, B_BATCH, B_CI = get_const_tuple(data.shape)
+    OUT, IN, B_OUT, B_IN = get_const_tuple(weight.shape)
 
-    assert len(data.shape) == 6
-    assert len(kernel.shape) == 6
-    assert data.dtype == "int8", data.dtype
-    assert kernel.dtype == "int8", kernel.dtype
+    oshape = (N, OUT, B_BATCH, B_OUT)
 
-    N, CI, IH, IW, B_BATCH, B_CI = get_const_tuple(data.shape)
-    CO, CI_G, KH, KW, B_CO, B_CI = get_const_tuple(kernel.shape)
-    PAD_H, PAD_W = padding
-    STR_H, STR_W = strides
-
-    OH = (IH + 2 * PAD_H - KH) // strides[0] + 1
-    OW = (IW + 2 * PAD_W - KW) // strides[1] + 1
-
-    assert group * CI_G == CI
-    assert CO % group == 0
-
-    oshape = (N, CO, OH, OW, B_BATCH, B_CO)
-
-    kh = tvm.reduce_axis((0, KH), name='d_i')
-    kw = tvm.reduce_axis((0, KW), name='d_j')
-    ci_o = tvm.reduce_axis((0, CI_G), name='k_o')
-    ci_i = tvm.reduce_axis((0, B_CI), name='k_ten')
+    ko = tvm.reduce_axis((0, IN), name='ko')
+    ki = tvm.reduce_axis((0, env.BLOCK_IN), name='ki')
 
     out = tvm.compute(
         oshape,
-        lambda n, co, h, w, b_n, b_co: tvm.sum(
-            pad_data[n, co // (CO // group) * CI_G + ci_o, h * STR_H + kh,
-                     w * STR_W + kw, b_n, ci_i].astype(out_dtype) *
-            kernel[co, ci_o, kh, kw, b_co, ci_i].astype(out_dtype),
-            axis=[ci_o, kh, kw, ci_i]),
-        name="res", tag="packed_group_conv2d")
+        lambda n, o, b_n, b_out: tvm.sum(data[n, ko, b_n, ki].astype(out_dtype) *
+                                         weight[o, ko, b_out, ki].astype(out_dtype),
+                                         axis=[ko, ki]),
+        name="res", tag="packed_dense",
+        attrs={'workload': (N, IN * B_CI, OUT * B_OUT)})
     return out
 
 
-def schedule_packed_group_conv2d(outs):
+def schedule_packed_dense(outs):
     """ Schedule the packed conv2d.
     """
     assert len(outs) == 1
     output = outs[0]
-    ewise_inputs = []
-    ewise_ops = []
-    conv2d_res = []
-    assert output.dtype == "int8"
-    assert output.op.input_tensors[0].dtype == "int32"
+    return tvm.create_schedule(output.op)
 
     def _traverse(op):
         if topi.tag.is_broadcast(op.tag):

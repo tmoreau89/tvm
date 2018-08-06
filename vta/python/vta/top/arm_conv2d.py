@@ -5,7 +5,6 @@ import tvm
 from topi.nn import conv2d, conv2d_alter_layout
 from topi import generic
 
-
 @conv2d.register(["vtacpu", "vta"])
 def compute(*args, **kwargs):
     with tvm.target.arm_cpu("vtacpu"):
