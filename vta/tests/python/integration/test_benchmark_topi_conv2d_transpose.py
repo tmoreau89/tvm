@@ -1,5 +1,8 @@
 """Testing if we can generate code in topi style"""
 
+import pickle
+import json
+
 import tvm
 from tvm import autotvm
 from tvm.contrib import util
@@ -10,8 +13,8 @@ import vta
 import vta.testing
 import numpy as np
 
-Workload = vta.top.vta_conv2d_transpose.Workload
-Schedule = vta.top.vta_conv2d_transpose.Schedule
+from vta.top.vta_conv2d_transpose import Workload, Schedule, inject_schedule
+
 
 @tvm.tag_scope(tag=topi.tag.ELEMWISE)
 def my_clip(x, a_min, a_max):
@@ -21,6 +24,15 @@ def my_clip(x, a_min, a_max):
     x = tvm.compute(x.shape, lambda *i: tvm.min(x(*i), const_max), name="clipA")
     x = tvm.compute(x.shape, lambda *i: tvm.max(x(*i), const_min), name="clipB")
     return x
+
+
+# Helper function to get factors
+def _find_factors(n):
+    factors = []
+    for f in range(1, n + 1):
+        if n % f == 0:
+            factors.append(f)
+    return factors
 
 
 def test_vta_conv2d_transpose():
@@ -106,8 +118,12 @@ def test_vta_conv2d_transpose():
             kernel_arr = tvm.nd.array(kernel_flipped, ctx)
             bias_arr = tvm.nd.array(bias_packed, ctx)
             res_arr = tvm.nd.array(res_np, ctx)
-            time_f = f.time_evaluator("conv2d_transpose", ctx, number=5)
+
+            remote.get_function("vta.simulator.profiler_clear")()
+            time_f = f.time_evaluator("conv2d_transpose", ctx, number=1)
             cost = time_f(data_arr, kernel_arr, bias_arr, res_arr)
+            stats = json.loads(remote.get_function("vta.simulator.profiler_status")())
+
             res_unpack = res_arr.asnumpy().transpose(
                 (0, 4, 1, 5, 2, 3)).reshape(wl.batch, wl.out_filter, fout_height, fout_width)
             if check_correctness:
@@ -118,19 +134,20 @@ def test_vta_conv2d_transpose():
                 res_ref += bias_orig.reshape(wl.out_filter, 1, 1)
                 res_ref = np.clip(res_ref, 0, 127).astype("int8")
                 np.testing.assert_allclose(res_unpack, res_ref)
-            return cost
+            return cost, stats
 
         def conv2d_transpose_normal(print_ir):
-            print("----- Conv2d Transpose End-to-End Test-------")
+            # print("----- Conv2d Transpose End-to-End Test-------")
             with vta.build_config():
                 s = vta.top.schedule_packed_conv2d_transpose([res])
                 if print_ir:
                     print(vta.lower(s, [data, kernel, bias, res], simple_mode=True))
-            cost = verify(s, True)
-            gops = (num_ops / cost.mean) / float(10 ** 9)
-            print("\tTime cost = %g sec/op, %g GOPS" % (cost.mean, gops))
+            cost, stats = verify(s, True)
+            # gops = (num_ops / cost.mean) / float(10 ** 9)
+            # print("\tTime cost = %g sec/op, %g GOPS" % (cost.mean, gops))
+            return cost, stats
 
-        conv2d_transpose_normal(False)
+        return conv2d_transpose_normal(False)
 
     def _run(env, remote):
         tasks = [
@@ -138,13 +155,64 @@ def test_vta_conv2d_transpose():
             ('DCGAN.CT1', Workload(1,  4,  4, 1024, 512, 4, 4, 1, 1, 2, 2)),
             ('DCGAN.CT2', Workload(1,  8,  8,  512, 256, 4, 4, 1, 1, 2, 2)),
             ('DCGAN.CT3', Workload(1, 16, 16,  256, 128, 4, 4, 1, 1, 2, 2)),
-            ('DCGAN.CT4', Workload(1, 32, 32,  128, env.BLOCK_IN, 4, 4, 1, 1, 2, 2)),
         ]
 
-        for tsk in tasks:
+        # for tsk in tasks:
+        #     print(tsk)
+        #     name, wkl = tsk
+        #     run_vta_conv2d_transpose(env, remote, name, wkl)
+        # exit()
+
+        map_list = {}
+        for i, tsk in enumerate(tasks):
             print(tsk)
             name, wkl = tsk
-            run_vta_conv2d_transpose(env, remote, name, wkl)
+
+            fout_height = (wkl.height - 1) * wkl.hstride - 2 * wkl.hpad + wkl.hkernel
+            fout_width = (wkl.width - 1) * wkl.wstride - 2 * wkl.wpad + wkl.wkernel
+
+            batch_factors = _find_factors(wkl.batch // env.BATCH)
+            height_factors = _find_factors(fout_height)
+            width_factors = _find_factors(fout_width)
+            cin_factors = _find_factors(wkl.in_filter // env.BLOCK_IN)
+            cout_factors = _find_factors(wkl.out_filter // env.BLOCK_OUT)
+            ht_factors = [1]
+            cot_factors = [1]
+
+            sch_list = []
+            cost_list = []
+            ct = 0
+            total = np.prod([len(x) for x in [batch_factors, height_factors, width_factors, cin_factors, cout_factors,
+                                              ht_factors, cot_factors]])
+            best = 1 << 32
+            for b_f in batch_factors:
+                for h_f in height_factors:
+                    for w_f in width_factors:
+                        for ci_f in cin_factors:
+                            for co_f in cout_factors:
+                                for h_t in ht_factors:
+                                    for co_t in cot_factors:
+                                        sch = Schedule(b_f, co_f, ci_f, h_f, w_f, h_t, co_t, False)
+                                        inject_schedule(sch)
+                                        try:
+                                            _, stats = run_vta_conv2d_transpose(env, remote, name, wkl)
+                                            cost = stats['inp_load_nbytes'] + stats['wgt_load_nbytes'] + stats['acc_load_nbytes'] + \
+                                                   stats['out_store_nbytes'] + stats['uop_load_nbytes']
+                                        except tvm.TVMError:
+                                            cost = 1 << 32
+                                        best = min(best, cost)
+                                        print("[Task %d/%d] %d/%d : %d / %d" % (i, len(tasks), ct, total, cost, best))
+                                        ct += 1
+                                        sch_list.append(sch)
+                                        cost_list.append(cost)
+            cost_list = np.array(cost_list)
+
+            sort_index = np.argsort(cost_list)
+
+            map_list[str(wkl)] = tuple(sch_list[sort_index[0]])
+
+        pickle.dump(map_list, open("conv_tmp.pkl", "wb"))
+
     vta.testing.run(_run)
 
 if __name__ == "__main__":

@@ -18,9 +18,34 @@ Schedule = namedtuple("Conv2DTransposeSchedule",
                       ('b_factor', 'oc_factor', 'ic_factor', 'h_factor', 'w_factor',
                        'oc_nthread', 'h_nthread', 'debug_sync'))
 
+workloads = [
+    Workload(1,  4,  4, 1024, 512, 4, 4, 1, 1, 2, 2),
+    Workload(1,  8,  8,  512, 256, 4, 4, 1, 1, 2, 2),
+    Workload(1, 16, 16,  256, 128, 4, 4, 1, 1, 2, 2),
+]
+
+schedules = [
+    Schedule(1, 16, 1, 8, 8, 1, 1, False),
+    Schedule(1, 4, 1, 16, 16, 1, 1, False),
+    Schedule(1, 1, 1, 32, 32, 1, 1, False),
+]
+
+injected_schedule = None
+
 
 def find_schedules(layer, vt_only=False, best_only=False):
-    return [Schedule(1, 1, 1, 2, 4, 1, 1, False)]
+    global injected_schedule
+    if injected_schedule:
+        return [injected_schedule]
+    for i, wkl in enumerate(workloads):
+        if str(wkl) == str(layer):
+            return [schedules[i]]
+    raise RuntimeError("No schedule for " + str(layer))
+
+
+def inject_schedule(sch):
+    global injected_schedule
+    injected_schedule = sch
 
 
 def packed_conv2d_transpose(data,
@@ -28,6 +53,8 @@ def packed_conv2d_transpose(data,
                             padding,
                             strides,
                             out_dtype="int32"):
+    env = get_env()
+
     batch, in_c, in_h, in_w, B_BATCH, B_CI = get_const_tuple(data.shape)
     out_c, _, filter_h, filter_w, B_CO, B_CI = get_const_tuple(kernel.shape)
     stride_h, stride_w = strides
@@ -84,8 +111,8 @@ def packed_conv2d_transpose(data,
             axis=[dc, dh, dw, dci]),
         tag="packed_conv2d_transpose",
         name='res',
-        attrs={"workload": (n, in_h, in_w, in_c, out_c, filter_h, filter_w,
-                            padding[0], padding[1], stride_h, stride_w)})
+        attrs={"workload": (batch * env.BATCH, in_h, in_w, in_c * env.BLOCK_IN, out_c * env.BLOCK_OUT,
+                            filter_h, filter_w, padding[0], padding[1], stride_h, stride_w)})
 
     return Output
 
@@ -103,8 +130,6 @@ def schedule_packed_conv2d_transpose(outs):
     conv2d_res = []
     assert output.dtype == "int8"
     assert output.op.input_tensors[0].dtype == "int32"
-    #
-    #return tvm.create_schedule(output.op)
 
     def _traverse(op):
         if topi.tag.is_broadcast(op.tag):
@@ -197,9 +222,11 @@ def schedule_packed_conv2d_transpose(outs):
 
     x_bo, x_co, x_i, x_j, x_bi, x_ci = s[conv2d_stage].op.axis
     k_o, d_i, d_j, k_i = s[conv2d_stage].op.reduce_axis
-    s[conv2d_stage].reorder(x_bo, k_o, d_j, d_i, x_co, x_i, x_j, x_bi, x_ci, k_i)
+    x_i, x_ii = s[conv2d_stage].split(x_i, 4)
+    x_j, x_jj = s[conv2d_stage].split(x_j, 2)
+    s[conv2d_stage].reorder(x_bo, k_o, x_j, x_co, x_i, x_jj, d_j, d_i, x_ii, x_bi, x_ci, k_i)
 
-    for axis in [d_j, d_i, x_i, x_j]:
+    for axis in [d_j, d_i, x_ii, x_jj]:
         s[conv2d_stage].unroll(axis)
 
     ic_factor = plan.ic_factor or 1

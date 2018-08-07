@@ -16,10 +16,46 @@ Schedule = namedtuple("GroupConv2DSchedule",
                       ('b_factor', 'oc_factor', 'ic_factor', 'h_factor', 'w_factor',
                        'oc_nthread', 'h_nthread', 'debug_sync'))
 
+workloads = [
+    Workload(1, 112, 112,  32,  32,  2, 3, 3, 1, 1, 1, 1),
+    Workload(1, 112, 112,  64,  64,  4, 3, 3, 1, 1, 2, 2),
+    Workload(1,  56,  56, 128, 128,  8, 3, 3, 1, 1, 1, 1),
+    Workload(1,  56,  56, 128, 128,  8, 3, 3, 1, 1, 2, 2),
+    Workload(1,  28,  28, 256, 256, 16, 3, 3, 1, 1, 1, 1),
+    Workload(1,  28,  28, 256, 256, 16, 3, 3, 1, 1, 2, 2),
+    Workload(1,  14,  14, 512, 512, 32, 3, 3, 1, 1, 1, 1),
+    Workload(1,  14,  14, 512, 512, 32, 3, 3, 1, 1, 2, 2),
+    Workload(1,  7,  7, 1024, 1024, 64, 3, 3, 1, 1, 1, 1),
+]
+
+schedules = [
+    Schedule(1, 1, 1, 28, 56, 1, 1, False),
+    Schedule(1, 1, 1, 14, 28, 1, 1, False),
+    Schedule(1, 1, 1, 28, 56, 1, 1, False),
+    Schedule(1, 1, 1, 14, 28, 1, 1, False),
+    Schedule(1, 1, 1, 28, 28, 1, 1, False),
+    Schedule(1, 1, 1, 14, 14, 1, 1, False),
+    Schedule(1, 1, 1, 14, 14, 1, 1, False),
+    Schedule(1, 1, 1, 7, 7, 1, 1, False),
+    Schedule(1, 1, 1, 7, 7, 1, 1, False),
+]
+
+injected_schedule = None
+
+# load schedule
 
 def find_schedules(layer, vt_only=False, best_only=False):
-    return [Schedule(0, 0, 1, 0, 0, 0, 0, False)]
+    global injected_schedule
+    if injected_schedule:
+        return [injected_schedule]
+    for i, wkl in enumerate(workloads):
+        if str(wkl) == str(layer):
+            return [schedules[i]]
+    raise RuntimeError("No schedule for " + str(layer))
 
+def inject_schedule(sch):
+    global injected_schedule
+    injected_schedule = sch
 
 def _get_workload(data, pad_data, kernel, output):
     """ Get the workload structure.
@@ -141,7 +177,6 @@ def schedule_packed_group_conv2d(outs):
         pad_data = None
     wrkld = _get_workload(data, pad_data, kernel, output)
     plan = find_schedules(wrkld, vt_only=True, best_only=True)[0]
-    logging.info("Trying to find plan for %s", wrkld)
     env = get_env()
 
     load_inp = load_wgt = load_out = store_out = env.dma_copy

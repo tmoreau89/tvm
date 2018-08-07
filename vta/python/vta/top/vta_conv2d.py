@@ -87,9 +87,11 @@ def find_schedules(layer, vt_only=False, best_only=False):
         return total_xfer_byte
 
     # Scheduling exploration
+    OH = (layer.height + 2 * layer.hpad - layer.hkernel) // layer.hstride + 1
+    OW = (layer.width + 2 * layer.wpad - layer.wkernel) // layer.wstride + 1
     batch_factors = _find_factors(layer.batch // env.BATCH)
-    height_factors = _find_factors(layer.height // layer.hstride)
-    width_factors = _find_factors(layer.width // layer.wstride)
+    height_factors = _find_factors(OH)
+    width_factors = _find_factors(OW)
     cin_factors = _find_factors(layer.in_filter // env.BLOCK_IN)
     cout_factors = _find_factors(layer.out_filter // env.BLOCK_OUT)
     ht_factors = [1, 2]
@@ -321,8 +323,6 @@ def compute_conv2d_transpose(attrs, inputs, out):
     dilation = attrs.get_int_tuple("dilation")
     layout = attrs["layout"]
     out_dtype = attrs['out_dtype']
-
-    print(inputs)
 
     assert dilation == (1, 1), "not support dilate now"
     if is_packed_layout(layout):

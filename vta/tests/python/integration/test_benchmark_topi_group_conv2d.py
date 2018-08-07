@@ -1,7 +1,8 @@
 """Testing if we can generate code in topi style"""
-
+import pickle
 import tvm
 from tvm import autotvm
+import json
 from tvm.contrib import util
 from tvm.contrib.pickle_memoize import memoize
 import topi
@@ -10,7 +11,7 @@ import vta
 import vta.testing
 import numpy as np
 
-Workload = vta.top.vta_group_conv2d.Workload
+from vta.top.vta_group_conv2d import Workload, Schedule, inject_schedule
 
 
 @tvm.tag_scope(tag=topi.tag.ELEMWISE)
@@ -22,9 +23,17 @@ def my_clip(x, a_min, a_max):
     x = tvm.compute(x.shape, lambda *i: tvm.max(x(*i), const_min), name="clipB")
     return x
 
+# Helper function to get factors
+def _find_factors(n):
+    factors = []
+    for f in range(1, n + 1):
+        if n % f == 0:
+            factors.append(f)
+    return factors
+
 
 def test_vta_group_conv2d():
-    def run_vta_group_conv2d(env, remote, name, wl, profile=True):
+    def run_vta_group_conv2d(env, remote, name, wl, profile=False):
         assert wl.in_filter % wl.groups == 0
         assert wl.out_filter % wl.groups == 0
         assert wl.in_filter % (wl.groups * env.BLOCK_IN) == 0
@@ -110,8 +119,12 @@ def test_vta_group_conv2d():
             kernel_arr = tvm.nd.array(kernel_packed, ctx)
             bias_arr = tvm.nd.array(bias_packed, ctx)
             res_arr = tvm.nd.array(res_np, ctx)
-            time_f = f.time_evaluator("group_conv2d", ctx, number=5)
+
+            remote.get_function("vta.simulator.profiler_clear")()
+            time_f = f.time_evaluator("group_conv2d", ctx, number=1)
             cost = time_f(data_arr, kernel_arr, bias_arr, res_arr)
+            stats = json.loads(remote.get_function("vta.simulator.profiler_status")())
+
             res_unpack = res_arr.asnumpy().transpose(
                 (0, 4, 1, 5, 2, 3)).reshape(batch_size, wl.out_filter, fout_height, fout_width)
             if check_correctness:
@@ -119,38 +132,87 @@ def test_vta_group_conv2d():
                 res_ref += bias_orig.reshape(wl.out_filter, 1, 1)
                 res_ref = np.clip(res_ref, 0, 127).astype("int8")
                 np.testing.assert_allclose(res_unpack, res_ref)
-            return cost
+            return cost, stats
 
         def group_conv_normal(print_ir):
-            print("----- Group conv2d End-to-End Test-------")
+            # print("----- Group conv2d End-to-End Test-------")
             with vta.build_config():
                 s = vta.top.schedule_packed_group_conv2d([res])
                 if print_ir:
                     print(vta.lower(s, [data, kernel, bias, res], simple_mode=True))
-            cost = verify(s, True)
-            gops = (num_ops / cost.mean) / float(10 ** 9)
-            print("\tTime cost = %g sec/op, %g GOPS" % (cost.mean, gops))
+            cost, stats = verify(s, True)
+            # gops = (num_ops / cost.mean) / float(10 ** 9)
+            # print("\tTime cost = %g sec/op, %g GOPS" % (cost.mean, gops))
+            return cost, stats
 
-        group_conv_normal(False)
+        return group_conv_normal(False)
 
     def _run(env, remote):
         tasks = [
             # mobilenet
             ('mobilenet.D1', Workload(1, 112, 112,  32,  32,  2, 3, 3, 1, 1, 1, 1)),
             ('mobilenet.D2', Workload(1, 112, 112,  64,  64,  4, 3, 3, 1, 1, 2, 2)),
-            ('mobilenet.D3', Workload(1,  56,  56,  64,  64,  4, 3, 3, 1, 1, 1, 1)),
+            ('mobilenet.D3', Workload(1,  56,  56, 128, 128,  8, 3, 3, 1, 1, 1, 1)),
             ('mobilenet.D4', Workload(1,  56,  56, 128, 128,  8, 3, 3, 1, 1, 2, 2)),
-            ('mobilenet.D5', Workload(1,  28,  28, 256, 256,  8, 3, 3, 1, 1, 1, 1)),
+            ('mobilenet.D5', Workload(1,  28,  28, 256, 256, 16, 3, 3, 1, 1, 1, 1)),
             ('mobilenet.D6', Workload(1,  28,  28, 256, 256, 16, 3, 3, 1, 1, 2, 2)),
-            ('mobilenet.D7', Workload(1,  14,  14, 256, 256, 16, 3, 3, 1, 1, 1, 1)),
-            ('mobilenet.D8', Workload(1,  14,  14, 256, 256, 16, 3, 3, 1, 1, 2, 2)),
+            ('mobilenet.D7', Workload(1,  14,  14, 512, 512, 32, 3, 3, 1, 1, 1, 1)),
+            ('mobilenet.D8', Workload(1,  14,  14, 512, 512, 32, 3, 3, 1, 1, 2, 2)),
             ('mobilenet.D9', Workload(1,  7,  7, 1024, 1024, 64, 3, 3, 1, 1, 1, 1)),
         ]
 
-        for tsk in tasks:
+        # for tsk in tasks:
+        #     print(tsk)
+        #     name, wkl = tsk
+        #     run_vta_group_conv2d(env, remote, name, wkl)
+        # return
+
+        map_list = {}
+        for i, tsk in enumerate(tasks):
             print(tsk)
             name, wkl = tsk
-            run_vta_group_conv2d(env, remote, name, wkl)
+
+            batch_factors = _find_factors(wkl.batch // env.BATCH)
+            height_factors = _find_factors(wkl.height // wkl.hstride)
+            width_factors = _find_factors(wkl.width // wkl.wstride)
+            cin_factors = _find_factors(wkl.in_filter // env.BLOCK_IN)
+            cout_factors = _find_factors(wkl.out_filter // env.BLOCK_OUT)
+            ht_factors = [1]
+            cot_factors = [1]
+
+            sch_list = []
+            cost_list = []
+            ct = 0
+            total = np.prod([len(x) for x in [batch_factors, height_factors, width_factors, cin_factors, cout_factors,
+                                              ht_factors, cot_factors]])
+            best = 1 << 32
+            for b_f in batch_factors:
+                for h_f in height_factors:
+                    for w_f in width_factors:
+                        for ci_f in cin_factors:
+                            for co_f in cout_factors:
+                                for h_t in ht_factors:
+                                    for co_t in cot_factors:
+                                        sch = Schedule(b_f, co_f, ci_f, h_f, w_f, h_t, co_t, False)
+                                        inject_schedule(sch)
+                                        try:
+                                            _, stats = run_vta_group_conv2d(env, remote, name, wkl)
+                                            cost = stats['inp_load_nbytes'] + stats['wgt_load_nbytes'] + stats['acc_load_nbytes'] + \
+                                                   stats['out_store_nbytes'] + stats['uop_load_nbytes']
+                                        except tvm.TVMError:
+                                            cost = 1 << 32
+                                        best = min(best, cost)
+                                        print("[Task %d/%d] %d/%d : %d / %d" % (i, len(tasks), ct, total, cost, best))
+                                        ct += 1
+                                        sch_list.append(sch)
+                                        cost_list.append(cost)
+            cost_list = np.array(cost_list)
+
+            sort_index = np.argsort(cost_list)
+
+            map_list[str(wkl)] = tuple(sch_list[sort_index[0]])
+
+        pickle.dump(map_list, open("group_conv_tmp.pkl", "wb"))
 
     vta.testing.run(_run)
 

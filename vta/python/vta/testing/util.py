@@ -24,6 +24,7 @@ def run(run_func):
         # with ./apps/pynq_rpc/start_rpc_server.sh
         # Set your VTA_LOCAL_SIM_RPC environment variable to
         # the port it's listening to, e.g. 9090
+
         local_rpc = int(os.environ.get("VTA_LOCAL_SIM_RPC", "0"))
         if local_rpc:
             remote = rpc.connect("localhost", local_rpc)
