@@ -161,12 +161,13 @@ def test_vta_group_conv2d():
             ('mobilenet.D9', Workload(1,  7,  7, 1024, 1024, 64, 3, 3, 1, 1, 1, 1)),
         ]
 
-        # for tsk in tasks:
-        #     print(tsk)
-        #     name, wkl = tsk
-        #     run_vta_group_conv2d(env, remote, name, wkl)
-        # return
+        for tsk in tasks:
+            print(tsk)
+            name, wkl = tsk
+            run_vta_group_conv2d(env, remote, name, wkl)
+        return
 
+        # TUNER
         map_list = {}
         for i, tsk in enumerate(tasks):
             print(tsk)

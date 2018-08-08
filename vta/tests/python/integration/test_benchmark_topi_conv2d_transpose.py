@@ -157,12 +157,13 @@ def test_vta_conv2d_transpose():
             ('DCGAN.CT3', Workload(1, 16, 16,  256, 128, 4, 4, 1, 1, 2, 2)),
         ]
 
-        # for tsk in tasks:
-        #     print(tsk)
-        #     name, wkl = tsk
-        #     run_vta_conv2d_transpose(env, remote, name, wkl)
-        # exit()
+        for tsk in tasks:
+            print(tsk)
+            name, wkl = tsk
+            run_vta_conv2d_transpose(env, remote, name, wkl)
+        return
 
+        # TUNER
         map_list = {}
         for i, tsk in enumerate(tasks):
             print(tsk)
