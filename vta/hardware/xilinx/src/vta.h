@@ -13,21 +13,6 @@
 
 #include <vta/hw_spec.h>
 
-#define INP_VEC_AXI_RATIO (VTA_INP_VECTOR_WIDTH / VTA_AXI_WIDTH)
-#define WGT_VEC_AXI_RATIO (VTA_WGT_VECTOR_WIDTH / VTA_AXI_WIDTH)
-#define ACC_VEC_AXI_RATIO (VTA_ACC_VECTOR_WIDTH / VTA_AXI_WIDTH)
-#define OUT_VEC_AXI_RATIO (VTA_OUT_VECTOR_WIDTH / VTA_AXI_WIDTH)
-
-#define AXI_INP_RATIO (VTA_AXI_WIDTH / VTA_INP_WIDTH)
-#define AXI_WGT_RATIO (VTA_AXI_WIDTH / VTA_WGT_WIDTH)
-#define AXI_ACC_RATIO (VTA_AXI_WIDTH / VTA_ACC_WIDTH)
-#define AXI_OUT_RATIO (VTA_AXI_WIDTH / VTA_OUT_WIDTH)
-
-#define INP_TENSOR_ELEMS (VTA_BATCH * INP_VEC_AXI_RATIO)
-#define WGT_TENSOR_ELEMS (VTA_BLOCK_OUT * WGT_VEC_AXI_RATIO)
-#define ACC_TENSOR_ELEMS (VTA_BATCH * ACC_VEC_AXI_RATIO)
-#define OUT_TENSOR_ELEMS (VTA_BATCH * OUT_VEC_AXI_RATIO)
-
 /* \typedef axi_T AXI datatype*/
 typedef ap_uint<VTA_AXI_WIDTH> axi_T;
 
@@ -144,8 +129,8 @@ void load(
   hls::stream<insn_T> &load_queue,
   hls::stream<bool> &g2l_dep_queue,
   hls::stream<bool> &l2g_dep_queue,
-  axi_T inp_mem[VTA_INP_BUFF_DEPTH][VTA_BATCH][INP_VEC_AXI_RATIO],
-  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][VTA_BLOCK_OUT][WGT_VEC_AXI_RATIO]);
+  axi_T inp_mem[VTA_INP_BUFF_DEPTH][INP_MAT_AXI_RATIO],
+  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_MAT_AXI_RATIO]);
 
 /*!
 * \brief Compute module.
@@ -179,9 +164,9 @@ void compute(
   hls::stream<bool> &s2g_dep_queue,
   hls::stream<bool> &g2l_dep_queue,
   hls::stream<bool> &g2s_dep_queue,
-  axi_T inp_mem[VTA_INP_BUFF_DEPTH][VTA_BATCH][INP_VEC_AXI_RATIO],
-  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][VTA_BLOCK_OUT][WGT_VEC_AXI_RATIO],
-  axi_T out_mem[VTA_ACC_BUFF_DEPTH][VTA_BATCH][OUT_VEC_AXI_RATIO]);
+  axi_T inp_mem[VTA_INP_BUFF_DEPTH][INP_MAT_AXI_RATIO],
+  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_MAT_AXI_RATIO],
+  axi_T out_mem[VTA_ACC_BUFF_DEPTH][OUT_MAT_AXI_RATIO]);
 
 /*!
 * \brief Store module.
@@ -201,7 +186,7 @@ void store(
   hls::stream<insn_T> &store_queue,
   hls::stream<bool> &g2s_dep_queue,
   hls::stream<bool> &s2g_dep_queue,
-  axi_T out_mem[VTA_ACC_BUFF_DEPTH][VTA_BATCH][OUT_VEC_AXI_RATIO]);
+  axi_T out_mem[VTA_ACC_BUFF_DEPTH][OUT_MAT_AXI_RATIO]);
 
 /*!
 * \brief VTA wrapper for simulation purpose only.

@@ -69,6 +69,10 @@ class PkgConfig(object):
                 "-L/opt/python3.6/lib/python3.6/site-packages/pynq/drivers/",
                 "-L/opt/python3.6/lib/python3.6/site-packages/pynq/lib/",
                 "-l:libdma.so"]
+        elif self.target == "ultra96":
+            self.ldflags = [
+                "-L/usr/lib",
+                "-lsds_lib"]
         else:
             self.ldflags = []
 

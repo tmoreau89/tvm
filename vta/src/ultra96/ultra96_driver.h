@@ -1,11 +1,11 @@
 /*!
  *  Copyright (c) 2018 by Contributors
- * \file vta_pynq_driver.h
- * \brief VTA driver for Pynq board.
+ * \file vta_ultra96_driver.h
+ * \brief VTA driver for Ultra96 board.
  */
 
-#ifndef VTA_PYNQ_PYNQ_DRIVER_H_
-#define VTA_PYNQ_PYNQ_DRIVER_H_
+#ifndef VTA_ULTRA96_ULTRA96_DRIVER_H_
+#define VTA_ULTRA96_ULTRA96_DRIVER_H_
 
 #ifdef __cplusplus
 extern "C" {
@@ -22,7 +22,7 @@ extern "C" {
 #include <time.h>
 #include <unistd.h>
 
-#ifdef __arm__
+#ifdef __aarch64__
 #include <libxlnk_cma.h>
 #else
 void* cma_alloc(size_t size, int cached);
@@ -42,7 +42,7 @@ uint32_t VTAReadMappedReg(void* base_addr, uint32_t offset);
 #define VTA_DEV_MEM_PATH "/dev/mem"
 
 /*! \brief VTA configuration register address range */
-#define VTA_RANGE 0x100
+#define VTA_RANGE 0x1000
 /*! \brief VTA configuration register start value */
 #define VTA_START 0x1
 /*! \brief VTA configuration register auto-restart value */
@@ -54,24 +54,24 @@ uint32_t VTAReadMappedReg(void* base_addr, uint32_t offset);
 *   from auto-generated XPAR_FETCH_0_S_AXI_CONTROL_BUS_BASEADDR define
 *   in xparameters.h (under build/vivado/<design name>/export/bsp/ps7_cortexa9_0/include)
 */
-#define VTA_FETCH_ADDR    0x43C00000
-/*! \brief VTA compute stage configuration register address
-*   from auto-generated XPAR_COMPUTE_0_S_AXI_CONTROL_BUS_BASEADDR define
-*   in xparameters.h (under build/vivado/<design name>/export/bsp/ps7_cortexa9_0/include)
-*/
-#define VTA_COMPUTE_ADDR  0x43C10000
+#define VTA_FETCH_ADDR    0xA0001000
 /*! \brief VTA compute stage configuration register address
 *   from auto-generated XPAR_LOAD_0_S_AXI_CONTROL_BUS_BASEADDR define
 *   in xparameters.h (under build/vivado/<design name>/export/bsp/ps7_cortexa9_0/include)
 */
-#define VTA_LOAD_ADDR     0x43C20000
+#define VTA_LOAD_ADDR     0xA0002000
+/*! \brief VTA compute stage configuration register address
+*   from auto-generated XPAR_COMPUTE_0_S_AXI_CONTROL_BUS_BASEADDR define
+*   in xparameters.h (under build/vivado/<design name>/export/bsp/ps7_cortexa9_0/include)
+*/
+#define VTA_COMPUTE_ADDR  0xA0003000
 /*! \brief VTA store stage configuration register address
 *   from auto-generated XPAR_STORE_0_S_AXI_CONTROL_BUS_BASEADDR define
 *   in xparameters.h (under build/vivado/<design name>/export/bsp/ps7_cortexa9_0/include)
 */
-#define VTA_STORE_ADDR    0x43C30000
+#define VTA_STORE_ADDR    0xA0004000
 
 #ifdef __cplusplus
 }
 #endif
-#endif  // VTA_PYNQ_PYNQ_DRIVER_H_
+#endif  // VTA_ULTRA96_ULTRA96_DRIVER_H_

@@ -2,6 +2,7 @@
 
 from . import vta_conv2d
 from . import arm_conv2d
+from . import testing
 
 from .bitpack import bitpack
 from .vta_dense import packed_dense, schedule_packed_dense

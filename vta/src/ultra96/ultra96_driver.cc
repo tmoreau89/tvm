@@ -1,12 +1,12 @@
 /*!
  *  Copyright (c) 2018 by Contributors
- * \file pynq_driver.c
- * \brief VTA driver for Pynq board.
+ * \file ultra96_driver.c
+ * \brief VTA driver for Ultra96 board.
  */
 
 #include <vta/driver.h>
 #include <thread>
-#include "pynq_driver.h"
+#include "./ultra96_driver.h"
 
 #define RESET_IOCTL _IOWR('X', 101, unsigned long)
 
@@ -25,7 +25,8 @@ void _xlnk_reset() {
 }
 
 void* VTAMemAlloc(size_t size, int cached) {
-  return cma_alloc(size, cached);
+  void* ret_val = cma_alloc(size, cached);
+  return ret_val;
 }
 
 void VTAMemFree(void* buf) {
@@ -120,10 +121,11 @@ class VTADevice {
     VTAWriteMappedReg(vta_store_handle_, 0x0, VTA_AUTORESTART);
 
     // Loop until the VTA is done
-    unsigned t, flag = 0;
+    unsigned t, flag, vld = 0;
     for (t = 0; t < wait_cycles; ++t) {
+      vld =  VTAReadMappedReg(vta_compute_handle_, 0x1c);
       flag = VTAReadMappedReg(vta_compute_handle_, 0x18);
-      if (flag == VTA_DONE) break;
+      if (flag == VTA_DONE && vld == 1) break;
       std::this_thread::yield();
     }
     // Report error if timeout

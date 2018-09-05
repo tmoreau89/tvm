@@ -1,8 +1,8 @@
 {
-  "TARGET" : "pynq",
+  "TARGET" : "ultra96",
   "HW_VER" : "0.0.4",
-  "HW_FREQ" : 100,
-  "HW_CLK_TARGET" : 7,
+  "HW_FREQ" : 333,
+  "HW_CLK_TARGET" : 2,
   "ALU_EN" : true,
   "MUL_EN" : false,
   "GEMM_II" : 1,

@@ -74,13 +74,8 @@ def generate_graph(graph_fn, params_fn, target):
     build_start = time.time()
 
     # Derive the LLVM compiler flags
-    # When targetting the Pynq, cross-compile to ARMv7 ISA
-    if env.TARGET == "sim":
-        target_host = "llvm"
-    elif env.TARGET == "pynq":
-        target_host = "llvm -target=armv7-none-linux-gnueabihf"
-    elif env.TARGET == 'ultra96':
-        target_host = "llvm -target=aarch64-linux-gnu"
+    # When targetting the Pynq/Ultra-96, cross-compile to ARM ISA
+    target_host = env.target_host
 
     # Load the ResNet-18 graph and parameters
     sym = nnvm.graph.load_json(open(graph_fn).read())
@@ -107,6 +102,7 @@ def generate_graph(graph_fn, params_fn, target):
                 params=params, target_host=target_host)
         else:
             with vta.build_config():
+                print("target host: {}".format(target_host))
                 graph, lib, params = nnvm.compiler.build(
                     sym, target, shape_dict, dtype_dict,
                     params=params, target_host=target_host)
@@ -160,12 +156,16 @@ synset = eval(open(os.path.join(data_dir, categ_fn)).read())
 reconfig_start = time.time()
 
 # We read the Pynq RPC host IP address and port number from the OS environment
-host = os.environ.get("VTA_PYNQ_RPC_HOST", "192.168.2.99")
-port = int(os.environ.get("VTA_PYNQ_RPC_PORT", "9091"))
+if env.TARGET == "pynq":
+    host = os.environ.get("VTA_PYNQ_RPC_HOST", "192.168.2.99")
+    port = int(os.environ.get("VTA_PYNQ_RPC_PORT", "9091"))
+elif env.TARGET == "ultra96":
+    host = os.environ.get("VTA_ULTRA96_RPC_HOST", "192.168.2.99")
+    port = int(os.environ.get("VTA_ULTRA96_RPC_PORT", "9091"))
 
 # We configure both the bitstream and the runtime system on the Pynq
 # to match the VTA configuration specified by the vta_config.json file.
-if env.TARGET == "pynq":
+if env.TARGET != "sim":
     # Make sure that TVM was compiled with RPC=1
     assert tvm.module.enabled("rpc")
     remote = rpc.connect(host, port)
@@ -192,11 +192,12 @@ elif env.TARGET == "sim":
 # ------------------------
 # Build the ResNet graph runtime, and configure the parameters.
 
-# target = tvm.target.create('llvm -device=arm_cpu -model=pynq')    # run arm cpu on pynq
-# target = tvm.target.create('llvm -device=arm_cpu -model=ultra96') # run arm cpu on ultra96
-# target = tvm.target.create('llvm -device=vta -model=pynq')        # run vta on pynq
-# target = tvm.target.create('llvm -device=vta -model=ultra96')     # run vta on ultra96
-target = tvm.target.create('llvm -device=vta -model=pynq')
+# llvm_command = 'llvm -device=arm_cpu -model=pynq {}'.format(env.llvm_triple) # run arm cpu on pynq
+# llvm_command = 'llvm -device=arm_cpu -model=ultra96 {}'.format(env.llvm_triple) # run arm cpu on ultra96
+# llvm_command = 'llvm -device=vta -model=pynq {}'.format(env.llvm_triple) # run vta cpu on pynq
+llvm_command = 'llvm -device=vta -model=ultra96 {}'.format(env.llvm_triple) # run vta cpu on ultra96
+
+target = tvm.target.create(llvm_command)
 
 # Device context
 ctx = remote.ext_dev(0) if target.device_name == "vta" else remote.cpu(0)
@@ -222,8 +223,8 @@ image_url = 'https://homes.cs.washington.edu/~moreau/media/vta/cat.jpg'
 response = requests.get(image_url)
 image = Image.open(BytesIO(response.content)).resize((224, 224))
 # Show Image
-plt.imshow(image)
-plt.show()
+# plt.imshow(image)
+# plt.show()
 # Set the input
 image = process_image(image)
 m.set_input('data', image)

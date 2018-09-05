@@ -604,10 +604,10 @@ vta_phy_addr_t VTAMemGetPhyAddr(void* buf) {
   return vta::sim::DRAM::Global()->GetPhyAddr(buf);
 }
 
-void VTAFlushCache(vta_phy_addr_t buf, int size) {
+void VTAFlushCache(void* vir_addr, vta_phy_addr_t phy_addr, int size) {
 }
 
-void VTAInvalidateCache(vta_phy_addr_t buf, int size) {
+void VTAInvalidateCache(void* vir_addr, vta_phy_addr_t phy_addr, int size) {
 }
 
 VTADeviceHandle VTADeviceAlloc() {

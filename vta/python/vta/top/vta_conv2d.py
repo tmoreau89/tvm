@@ -368,6 +368,7 @@ def _get_workload(data, pad_data, kernel, output):
     assert k_o == o_c
     assert k_i == i_c
     # Scale the channel size
+    i_b *= ib_blk
     i_c *= i_blk
     o_c *= o_blk
     if pad_data is not None:

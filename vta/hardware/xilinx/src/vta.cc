@@ -46,14 +46,14 @@ void reset_mem(
   memop_sram_T &sram_idx,
   memop_sram_T range,
   memop_id_T memory_type,
-  axi_T inp_mem[VTA_INP_BUFF_DEPTH][INP_TENSOR_ELEMS],
-  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_TENSOR_ELEMS]
+  axi_T inp_mem[VTA_INP_BUFF_DEPTH][INP_MAT_AXI_RATIO],
+  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_MAT_AXI_RATIO]
   ) {
 
   if (memory_type == VTA_MEM_ID_INP) {
     for (int i = 0; i < range; i++) {
 #pragma HLS PIPELINE
-      for (int j = 0; j < INP_TENSOR_ELEMS; j++) {
+      for (int j = 0; j < INP_MAT_AXI_RATIO; j++) {
         inp_mem[sram_idx][j] = 0;
       }
       sram_idx++;
@@ -61,7 +61,7 @@ void reset_mem(
   } else {
     for (int i = 0; i < range; i++) {
 #pragma HLS PIPELINE
-      for (int j = 0; j < WGT_TENSOR_ELEMS; j++) {
+      for (int j = 0; j < WGT_MAT_AXI_RATIO; j++) {
         wgt_mem[sram_idx][j] = 0;
       }
       sram_idx++;
@@ -76,8 +76,8 @@ void load(
   hls::stream<insn_T> &load_queue,
   hls::stream<bool> &g2l_dep_queue,
   hls::stream<bool> &l2g_dep_queue,
-  axi_T inp_mem[VTA_INP_BUFF_DEPTH][INP_TENSOR_ELEMS],
-  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_TENSOR_ELEMS]
+  axi_T inp_mem[VTA_INP_BUFF_DEPTH][INP_MAT_AXI_RATIO],
+  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_MAT_AXI_RATIO]
   ) {
 #pragma HLS INTERFACE m_axi port = weights offset = slave bundle = data_port
 #pragma HLS INTERFACE m_axi port = inputs offset = slave bundle = data_port
@@ -134,7 +134,7 @@ void load(
       sram_idx += x_pad_0;
       // Data transfer
       memcpy(&inp_mem[sram_idx][0],
-             (const axi_T*) &inputs[dram_idx * INP_TENSOR_ELEMS],
+             (const axi_T*) &inputs[dram_idx * INP_MAT_AXI_RATIO],
              x_size * VTA_INP_ELEM_BYTES);
       sram_idx += x_size;
       dram_idx += x_stride;
@@ -148,7 +148,7 @@ void load(
       sram_idx += x_pad_0;
       // Data transfer
       memcpy(&wgt_mem[sram_idx][0],
-             (const axi_T*) &weights[dram_idx * WGT_TENSOR_ELEMS],
+             (const axi_T*) &weights[dram_idx * WGT_MAT_AXI_RATIO],
              x_size * VTA_WGT_ELEM_BYTES);
       sram_idx += x_size;
       dram_idx += x_stride;
@@ -187,9 +187,9 @@ void compute(
   hls::stream<bool> &s2g_dep_queue,
   hls::stream<bool> &g2l_dep_queue,
   hls::stream<bool> &g2s_dep_queue,
-  axi_T inp_mem[VTA_INP_BUFF_DEPTH][INP_TENSOR_ELEMS],
-  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_TENSOR_ELEMS],
-  axi_T out_mem[VTA_ACC_BUFF_DEPTH][OUT_TENSOR_ELEMS]
+  axi_T inp_mem[VTA_INP_BUFF_DEPTH][INP_MAT_AXI_RATIO],
+  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_MAT_AXI_RATIO],
+  axi_T out_mem[VTA_ACC_BUFF_DEPTH][OUT_MAT_AXI_RATIO]
   ) {
 #pragma HLS INTERFACE s_axilite port = done bundle = CONTROL_BUS
 #pragma HLS INTERFACE m_axi port = uops offset = slave bundle = uop_port
@@ -211,17 +211,10 @@ void compute(
   static uop_T uop_mem[VTA_UOP_BUFF_DEPTH];
 
   // Accumulator storage
-  static axi_T acc_mem[VTA_ACC_BUFF_DEPTH][ACC_TENSOR_ELEMS];
+  static axi_T acc_mem[VTA_ACC_BUFF_DEPTH][ACC_MAT_AXI_RATIO];
 #pragma HLS ARRAY_RESHAPE variable = acc_mem complete dim=2
 // This is necessary to obtain II=1
 #pragma HLS DEPENDENCE variable = acc_mem inter false
-
-
-#ifdef MUL_EN
-// This will limit DSP util when Multipliers are enabled in the ALU
-#pragma HLS allocation instances=mul limit=220 operation
-#endif  // MUL_EN
-
 
   // Pop GEMM instruction
   insn_T insn = gemm_queue.read();
@@ -275,7 +268,7 @@ void compute(
       for (int y = 0; y < y_size; y++) {
         // Perform data transfer
         memcpy(&acc_mem[sram_idx][0],
-              (const axi_T*) &biases[dram_idx * ACC_TENSOR_ELEMS],
+              (const axi_T*) &biases[dram_idx * ACC_MAT_AXI_RATIO],
               x_size * VTA_ACC_ELEM_BYTES);
         sram_idx += x_size;
         dram_idx += x_stride;
@@ -334,37 +327,37 @@ void compute(
 
             // Read in weight tensor
             wgt_T w_tensor[VTA_BLOCK_OUT][VTA_BLOCK_IN];
-            for (int oc = 0; oc < VTA_BLOCK_OUT; oc++) {
-              for (int p = 0; p < WGT_VEC_AXI_RATIO; p++) {
-                axi_T packet = wgt_mem[wgt_idx][oc * WGT_VEC_AXI_RATIO + p];
-                for (int w = 0; w < AXI_WGT_RATIO; w++) {
-                  w_tensor[oc][p * AXI_WGT_RATIO + w] =
-                      packet.range((w + 1) * VTA_WGT_WIDTH - 1, w * VTA_WGT_WIDTH);
-                }
+            for (int p = 0; p < WGT_MAT_AXI_RATIO; p++) {
+              axi_T packet = wgt_mem[wgt_idx][p];
+              for (int w = 0; w < AXI_WGT_RATIO; w++) {
+                int oc_idx = (p * AXI_WGT_RATIO + w) / VTA_BLOCK_IN;
+                int ic_idx = (p * AXI_WGT_RATIO + w) % VTA_BLOCK_IN;
+                w_tensor[oc_idx][ic_idx] =
+                    packet.range((w + 1) * VTA_WGT_WIDTH - 1, w * VTA_WGT_WIDTH);
               }
             }
 
             // Read in input tensor
             inp_T i_tensor[VTA_BATCH][VTA_BLOCK_IN];
-            for (int b = 0; b < VTA_BATCH; b++) {
-              for (int p = 0; p < INP_VEC_AXI_RATIO; p++) {
-                axi_T packet = inp_mem[src_idx][b * INP_VEC_AXI_RATIO + p];
-                for (int w = 0; w < AXI_INP_RATIO; w++) {
-                  i_tensor[b][p * AXI_INP_RATIO + w] =
-                      packet.range((w + 1) * VTA_INP_WIDTH - 1, w * VTA_INP_WIDTH);
-                }
+            for (int p = 0; p < INP_MAT_AXI_RATIO; p++) {
+              axi_T packet = inp_mem[src_idx][p];
+              for (int w = 0; w < AXI_INP_RATIO; w++) {
+                int b_idx = (p * AXI_INP_RATIO + w) / VTA_BLOCK_IN;
+                int ic_idx = (p * AXI_INP_RATIO + w) % VTA_BLOCK_IN;
+                i_tensor[b_idx][ic_idx] =
+                    packet.range((w + 1) * VTA_INP_WIDTH - 1, w * VTA_INP_WIDTH);
               }
             }
 
             // Read in accum tensor
             reg_T a_tensor[VTA_BATCH][VTA_BLOCK_OUT];
-            for (int b = 0; b < VTA_BATCH; b++) {
-              for (int p = 0; p < ACC_VEC_AXI_RATIO; p++) {
-                axi_T packet = acc_mem[dst_idx][b * ACC_VEC_AXI_RATIO + p];
-                for (int w = 0; w < AXI_ACC_RATIO; w++) {
-                  a_tensor[b][p * AXI_ACC_RATIO + w] =
-                      packet.range(w * VTA_ACC_WIDTH + VTA_REG_WIDTH - 1, w * VTA_ACC_WIDTH);
-                }
+            for (int p = 0; p < ACC_MAT_AXI_RATIO; p++) {
+              axi_T packet = acc_mem[dst_idx][p];
+              for (int w = 0; w < AXI_ACC_RATIO; w++) {
+                int b_idx = (p * AXI_ACC_RATIO + w) / VTA_BLOCK_OUT;
+                int oc_idx = (p * AXI_ACC_RATIO + w) % VTA_BLOCK_OUT;
+                a_tensor[b_idx][oc_idx] =
+                    packet.range(w * VTA_ACC_WIDTH + VTA_REG_WIDTH - 1, w * VTA_ACC_WIDTH);
               }
             }
 
@@ -383,9 +376,6 @@ void compute(
                   wgt_T w_elem = w_tensor[oc][ic];
                   inp_T i_elem = i_tensor[b][ic];
                   mul_T prod = i_elem * w_elem;
-#ifdef NO_DSP
-#pragma HLS RESOURCE variable = prod core = Mul_LUT
-#endif //  NO_DSP
                   tmp += (sum_T) prod;
                 }
                 // Update summation
@@ -398,30 +388,30 @@ void compute(
             }
 
             // Write the results back into accumulator
-            for (int b = 0; b < VTA_BATCH; b++) {
-              for (int p = 0; p < ACC_VEC_AXI_RATIO; p++) {
-                axi_T packet = 0;
-                for (int w = 0; w < AXI_ACC_RATIO; w++) {
-                  packet.range((w + 1) * VTA_ACC_WIDTH - 1, w * VTA_ACC_WIDTH) = (acc_T) a_tensor[b][p * AXI_ACC_RATIO + w];
-                }
-                acc_mem[dst_idx][b * ACC_VEC_AXI_RATIO + p] = packet;
+            for (int p = 0; p < ACC_MAT_AXI_RATIO; p++) {
+              axi_T packet = 0;
+              for (int w = 0; w < AXI_ACC_RATIO; w++) {
+                int b_idx = (p * AXI_ACC_RATIO + w) / VTA_BLOCK_OUT;
+                int oc_idx = (p * AXI_ACC_RATIO + w) % VTA_BLOCK_OUT;
+                packet.range((w + 1) * VTA_ACC_WIDTH - 1, w * VTA_ACC_WIDTH) =
+                    (acc_T) a_tensor[b_idx][oc_idx];
               }
+              acc_mem[dst_idx][p] = packet;
             }
 
             // Write the results back in the output buffer
-            for (int b = 0; b < VTA_BATCH; b++) {
-              for (int p = 0; p < OUT_VEC_AXI_RATIO; p++) {
-                axi_T packet = 0;
-                for (int w = 0; w < AXI_OUT_RATIO; w++) {
-                  packet.range((w + 1) * VTA_OUT_WIDTH - 1, w * VTA_OUT_WIDTH) = o_tensor[b][p * AXI_OUT_RATIO + w];
-                }
-                out_mem[dst_idx][b * OUT_VEC_AXI_RATIO + p] = packet;
+            for (int p = 0; p < OUT_MAT_AXI_RATIO; p++) {
+              axi_T packet = 0;
+              for (int w = 0; w < AXI_OUT_RATIO; w++) {
+                int b_idx = (p * AXI_OUT_RATIO + w) / VTA_BLOCK_OUT;
+                int oc_idx = (p * AXI_OUT_RATIO + w) % VTA_BLOCK_OUT;
+                packet.range((w + 1) * VTA_OUT_WIDTH - 1, w * VTA_OUT_WIDTH) =
+                    o_tensor[b_idx][oc_idx];
               }
+              out_mem[dst_idx][p] = packet;
             }
           }
-        }
-#ifdef ALU_EN
-        else if (opcode == VTA_OPCODE_ALU) {
+        } else if (opcode == VTA_OPCODE_ALU) {
           // Iterate over micro op
           READ_ALU_UOP: for (int upc = uop_bgn; upc < uop_end; upc++) {
             // Read micro-op fields
@@ -435,25 +425,25 @@ void compute(
 
             // Read in src tensor
             reg_T src_tensor[VTA_BATCH][VTA_BLOCK_OUT];
-            for (int b = 0; b < VTA_BATCH; b++) {
-              for (int p = 0; p < ACC_VEC_AXI_RATIO; p++) {
-                axi_T packet = acc_mem[src_idx][b * ACC_VEC_AXI_RATIO + p];
-                for (int w = 0; w < AXI_ACC_RATIO; w++) {
-                  src_tensor[b][p * AXI_ACC_RATIO + w] =
-                      packet.range(w * VTA_ACC_WIDTH + VTA_REG_WIDTH - 1, w * VTA_ACC_WIDTH);
-                }
+            for (int p = 0; p < ACC_MAT_AXI_RATIO; p++) {
+              axi_T packet = acc_mem[src_idx][p];
+              for (int w = 0; w < AXI_ACC_RATIO; w++) {
+                int b_idx = (p * AXI_ACC_RATIO + w) / VTA_BLOCK_OUT;
+                int oc_idx = (p * AXI_ACC_RATIO + w) % VTA_BLOCK_OUT;
+                src_tensor[b_idx][oc_idx] =
+                    packet.range(w * VTA_ACC_WIDTH + VTA_REG_WIDTH - 1, w * VTA_ACC_WIDTH);
               }
             }
 
             // Read in dst tensor
             reg_T dst_tensor[VTA_BATCH][VTA_BLOCK_OUT];
-            for (int b = 0; b < VTA_BATCH; b++) {
-              for (int p = 0; p < ACC_VEC_AXI_RATIO; p++) {
-                axi_T packet = acc_mem[dst_idx][b * ACC_VEC_AXI_RATIO + p];
-                for (int w = 0; w < AXI_ACC_RATIO; w++) {
-                  dst_tensor[b][p * AXI_ACC_RATIO + w] =
-                      packet.range(w * VTA_ACC_WIDTH + VTA_REG_WIDTH - 1, w * VTA_ACC_WIDTH);
-                }
+            for (int p = 0; p < ACC_MAT_AXI_RATIO; p++) {
+              axi_T packet = acc_mem[dst_idx][p];
+              for (int w = 0; w < AXI_ACC_RATIO; w++) {
+                int b_idx = (p * AXI_ACC_RATIO + w) / VTA_BLOCK_OUT;
+                int oc_idx = (p * AXI_ACC_RATIO + w) % VTA_BLOCK_OUT;
+                dst_tensor[b_idx][oc_idx] =
+                    packet.range(w * VTA_ACC_WIDTH + VTA_REG_WIDTH - 1, w * VTA_ACC_WIDTH);
               }
             }
 
@@ -487,44 +477,34 @@ void compute(
                   dst_tensor[i][b] = shr_val;
                   o_tensor[i][b] = (out_T) shr_val.range(VTA_OUT_WIDTH-1, 0);
                 }
-#ifdef MUL_EN
-                else if (alu_opcode == VTA_ALU_OPCODE_MUL) {
-                  // Compute Mul Right
-                  reg_T mul_val = src_0 * mul_by;
-#ifdef NO_DSP
-#pragma HLS RESOURCE variable = mul_val core = Mul_LUT
-#endif //  NO_DSP
-                  dst_tensor[i][b] = mul_val;
-                  o_tensor[i][b] = (out_T) mul_val.range(VTA_OUT_WIDTH-1, 0);
-                }
-#endif  // MUL_EN
               }
             }
 
             // Write the results back into accumulator
-            for (int b = 0; b < VTA_BATCH; b++) {
-              for (int p = 0; p < ACC_VEC_AXI_RATIO; p++) {
-                axi_T packet = 0;
-                for (int w = 0; w < AXI_ACC_RATIO; w++) {
-                  packet.range((w + 1) * VTA_ACC_WIDTH - 1, w * VTA_ACC_WIDTH) = (acc_T) dst_tensor[b][p * AXI_ACC_RATIO + w];
-                }
-                acc_mem[dst_idx][b * ACC_VEC_AXI_RATIO + p] = packet;
+            for (int p = 0; p < ACC_MAT_AXI_RATIO; p++) {
+              axi_T packet = 0;
+              for (int w = 0; w < AXI_ACC_RATIO; w++) {
+                int b_idx = (p * AXI_ACC_RATIO + w) / VTA_BLOCK_OUT;
+                int oc_idx = (p * AXI_ACC_RATIO + w) % VTA_BLOCK_OUT;
+                packet.range((w + 1) * VTA_ACC_WIDTH - 1, w * VTA_ACC_WIDTH) =
+                    (acc_T) dst_tensor[b_idx][oc_idx];
               }
+              acc_mem[dst_idx][p] = packet;
             }
 
             // Write the results back in the output buffer
-            for (int b = 0; b < VTA_BATCH; b++) {
-              for (int p = 0; p < OUT_VEC_AXI_RATIO; p++) {
-                axi_T packet = 0;
-                for (int w = 0; w < AXI_OUT_RATIO; w++) {
-                  packet.range((w + 1) * VTA_OUT_WIDTH - 1, w * VTA_OUT_WIDTH) = (acc_T) o_tensor[b][p * AXI_OUT_RATIO + w];
-                }
-                out_mem[dst_idx][b * OUT_VEC_AXI_RATIO + p] = packet;
+            for (int p = 0; p < OUT_MAT_AXI_RATIO; p++) {
+              axi_T packet = 0;
+              for (int w = 0; w < AXI_OUT_RATIO; w++) {
+                int b_idx = (p * AXI_OUT_RATIO + w) / VTA_BLOCK_OUT;
+                int oc_idx = (p * AXI_OUT_RATIO + w) % VTA_BLOCK_OUT;
+                packet.range((w + 1) * VTA_OUT_WIDTH - 1, w * VTA_OUT_WIDTH) =
+                    o_tensor[b_idx][oc_idx];
               }
+              out_mem[dst_idx][p] = packet;
             }
           }
         }
-#endif  // ALU_EN
 
         // Update offsets
         dst_offset_in += dst_factor_in;
@@ -553,7 +533,7 @@ void store(
   hls::stream<insn_T> &store_queue,
   hls::stream<bool> &g2s_dep_queue,
   hls::stream<bool> &s2g_dep_queue,
-  axi_T out_mem[VTA_ACC_BUFF_DEPTH][OUT_TENSOR_ELEMS]
+  axi_T out_mem[VTA_ACC_BUFF_DEPTH][OUT_MAT_AXI_RATIO]
   ) {
 #pragma HLS INTERFACE m_axi port = outputs offset = slave bundle = data_port
 #pragma HLS INTERFACE axis port = store_queue
@@ -596,7 +576,7 @@ void store(
 #pragma HLS PIPELINE
     // Perform data transfer
     memcpy(
-      const_cast<axi_T*>(&outputs[dram_idx * OUT_TENSOR_ELEMS]),
+      const_cast<axi_T*>(&outputs[dram_idx * OUT_MAT_AXI_RATIO]),
       (const axi_T*) &out_mem[sram_idx][0],
       x_size * VTA_OUT_ELEM_BYTES);
 #pragma HLS RESOURCE variable = sram_idx core = Mul_LUT
@@ -644,9 +624,9 @@ void vta(
   hls::stream<bool> g2s_dep_queue;
 
   // Instantiate memories
-  axi_T inp_mem[VTA_INP_BUFF_DEPTH][INP_TENSOR_ELEMS];
-  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_TENSOR_ELEMS];
-  axi_T out_mem[VTA_ACC_BUFF_DEPTH][OUT_TENSOR_ELEMS];
+  axi_T inp_mem[VTA_INP_BUFF_DEPTH][INP_MAT_AXI_RATIO];
+  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_MAT_AXI_RATIO];
+  axi_T out_mem[VTA_ACC_BUFF_DEPTH][OUT_MAT_AXI_RATIO];
 
   // Push all instructions into the queues
   fetch(insn_count, insns, tmp_load_queue, tmp_gemm_queue, tmp_store_queue);

@@ -14,7 +14,7 @@ extern "C" {
 #include <stdint.h>
 
 /*! AXI bus width */
-#define VTA_AXI_WIDTH 64
+#define VTA_AXI_WIDTH 128
 
 /*! Register file width */
 #define VTA_REG_WIDTH 24
@@ -49,16 +49,34 @@ extern "C" {
 /*! Blocking factor of the outer loop (corresponds to C in (A,B)x(B,C) mat mult) */
 #define VTA_BLOCK_OUT (1 << VTA_LOG_BLOCK_OUT)
 
-/*! Weight vector width */
-#define VTA_WGT_VECTOR_WIDTH (VTA_WGT_WIDTH * VTA_BLOCK_IN)
-/*! Input vector width */
-#define VTA_INP_VECTOR_WIDTH (VTA_INP_WIDTH * VTA_BLOCK_IN)
-/*! Accumulator vector width */
-#define VTA_ACC_VECTOR_WIDTH (VTA_ACC_WIDTH * VTA_BLOCK_OUT)
-/*! Register file vector width */
-#define VTA_REG_VECTOR_WIDTH (VTA_REG_WIDTH * VTA_BLOCK_OUT)
-/*! Output vector width */
-#define VTA_OUT_VECTOR_WIDTH (VTA_OUT_WIDTH * VTA_BLOCK_OUT)
+/*! Input vector size in bits */
+#define VTA_INP_MATRIX_WIDTH (VTA_INP_WIDTH * VTA_BATCH * VTA_BLOCK_IN)
+/*! Weight vector size in bits */
+#define VTA_WGT_MATRIX_WIDTH (VTA_WGT_WIDTH * VTA_BLOCK_OUT * VTA_BLOCK_IN)
+/*! Accumulator vector size in bits */
+#define VTA_ACC_MATRIX_WIDTH (VTA_ACC_WIDTH * VTA_BATCH * VTA_BLOCK_OUT)
+/*! Register file vector size in bits */
+#define VTA_REG_MATRIX_WIDTH (VTA_REG_WIDTH * VTA_BATCH * VTA_BLOCK_OUT)
+/*! Output vector size in bits */
+#define VTA_OUT_MATRIX_WIDTH (VTA_OUT_WIDTH * VTA_BATCH * VTA_BLOCK_OUT)
+
+/*! Ratio between input matrix size and axi width */
+#define INP_MAT_AXI_RATIO (VTA_INP_MATRIX_WIDTH / VTA_AXI_WIDTH)
+/*! Ratio between weight matrix size and axi width */
+#define WGT_MAT_AXI_RATIO (VTA_WGT_MATRIX_WIDTH / VTA_AXI_WIDTH)
+/*! Ratio between accumulator matrix size and axi width */
+#define ACC_MAT_AXI_RATIO (VTA_ACC_MATRIX_WIDTH / VTA_AXI_WIDTH)
+/*! Ratio between output matrix size and axi width */
+#define OUT_MAT_AXI_RATIO (VTA_OUT_MATRIX_WIDTH / VTA_AXI_WIDTH)
+
+/*! Ratio between input matrix size and axi width */
+#define AXI_INP_RATIO (VTA_AXI_WIDTH / VTA_INP_WIDTH)
+/*! Ratio between weight matrix size and axi width */
+#define AXI_WGT_RATIO (VTA_AXI_WIDTH / VTA_WGT_WIDTH)
+/*! Ratio between accumulator matrix size and axi width */
+#define AXI_ACC_RATIO (VTA_AXI_WIDTH / VTA_ACC_WIDTH)
+/*! Ratio between output matrix size and axi width */
+#define AXI_OUT_RATIO (VTA_AXI_WIDTH / VTA_OUT_WIDTH)
 
 /*! On-chip micro-op buffer size in B */
 #define VTA_UOP_BUFF_SIZE (1 << VTA_LOG_UOP_BUFF_SIZE)

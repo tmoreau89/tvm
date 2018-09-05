@@ -1,10 +1,10 @@
 {
   "TARGET" : "sim",
-  "HW_VER" : "0.0.2",
+  "HW_VER" : "0.0.4",
   "HW_FREQ" : 100,
   "HW_CLK_TARGET" : 7,
   "ALU_EN" : true,
-  "MUL_EN" : true,
+  "MUL_EN" : false,
   "GEMM_II" : 1,
   "TALU_II" : 2,
   "LOG_INP_WIDTH" : 3,

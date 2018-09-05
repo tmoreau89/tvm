@@ -97,7 +97,8 @@ def main():
     cfg["LOG_OUT_BUFF_SIZE"] = cfg["LOG_ACC_BUFF_SIZE"] - cfg["LOG_ACC_WIDTH"] + cfg["LOG_OUT_WIDTH"]
     # Generate bitstream config string.
     # Needs to match the BITSTREAM string in python/vta/environment.py
-    cfg["BITSTREAM"] = "{}_{}x{}x{}_a{}w{}o{}_{}_{}_{}_{}_{}MHz_{}ns_gii{}".format(
+    cfg["BITSTREAM"] = "{}_{}_{}x{}x{}_a{}w{}o{}_{}_{}_{}_{}_{}MHz_{}ns_gii{}".format(
+        cfg["TARGET"],
         cfg["HW_VER"].replace('.', '_'),
         (1 << cfg["LOG_BATCH"]),
         (1 << cfg["LOG_BLOCK_IN"]),
@@ -131,6 +132,8 @@ def main():
         cflags_str = " ".join(pkg.cflags)
         if cfg["TARGET"] == "pynq":
             cflags_str += " -DVTA_TARGET_PYNQ"
+        if cfg["TARGET"] == "ultra96":
+            cflags_str += " -DVTA_TARGET_ULTRA96"
         print(cflags_str)
 
     if args.ldflags:

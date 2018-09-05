@@ -150,8 +150,9 @@ class Environment(object):
         self._dev_ctx = None
         self._last_env = None
         #  derive bitstream name
-        self.BITSTREAM = "{}/bitstreams_valid/{}x{}x{}_a{}w{}o{}_{}_{}_{}_{}_{}MHz_{}ns_gii{}".format(
+        self.BITSTREAM = "{}/{}/{}x{}x{}_a{}w{}o{}_{}_{}_{}_{}_{}MHz_{}ns_gii{}".format(
             self.HW_VER.replace('.', '_'),
+            self.TARGET,
             self.BATCH,
             self.BLOCK_IN,
             self.BLOCK_OUT,
@@ -226,14 +227,34 @@ class Environment(object):
         """GEMM intrinsic"""
         return self.dev.gemm
 
+    # TODO get rid of it
     @property
     def target_host(self):
         """The target host"""
+        return "llvm " + self.llvm_triple
+
+    @property
+    def target_vta_cpu(self):
+        """The target host"""
         if self.TARGET == "pynq":
-            return "llvm -target=armv7-none-linux-gnueabihf"
-        if self.TARGET == "sim":
+            return "llvm -device=arm_cpu -model=pynq {}".format(self.llvm_triple)
+        elif self.TARGET == "ultra96":
+            return "llvm -device=arm_cpu -model=ultra96 {}".format(self.llvm_triple)
+        elif self.TARGET == "sim":
             return "llvm"
         raise ValueError("Unknown target %s" % self.TARGET)
+
+    @property
+    def llvm_triple(self):
+        """The llvm flags for the target platform"""
+        if self.TARGET == "pynq":
+            return "-target=armv7-none-linux-gnueabihf"
+        elif self.TARGET == "ultra96":
+            return "-target=aarch64-linux-gnu"
+        elif self.TARGET == "sim":
+            return ""
+        else:
+            raise ValueError("Unknown target %s" % self.TARGET)
 
 
 def get_env():

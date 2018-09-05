@@ -10,13 +10,15 @@ import os
 import ctypes
 import json
 import tvm
+from tvm._ffi.base import c_str
 from tvm import rpc
 from tvm.contrib import cc
-from pynq import Bitstream
 
 from ..environment import get_env
 from ..pkg_config import PkgConfig
 from ..libinfo import find_libvta
+from .pynq_utils import program_pynq
+from .ultra96_utils import program_ultra96
 
 
 @tvm.register_func("tvm.rpc.server.start", override=True)
@@ -51,8 +53,11 @@ def server_start():
     @tvm.register_func("tvm.contrib.vta.init", override=True)
     def program_fpga(file_name):
         path = tvm.get_global_func("tvm.rpc.server.workpath")(file_name)
-        bitstream = Bitstream(path)
-        bitstream.download()
+        env = get_env()
+        if env.TARGET == "pynq":
+            program_pynq(path)
+        elif env.TARGET == "ultra96":
+            program_ultra96(path)
         logging.info("Program FPGA with %s", file_name)
 
     @tvm.register_func("tvm.rpc.server.shutdown", override=True)
