@@ -69,19 +69,18 @@ def classify(m, image):
 # Helper function to compile the NNVM graph
 # Takes in a path to a graph file, params file, and device target
 # Returns the NNVM graph object, a compiled library object, and the params dict
-def generate_graph(graph_fn, params_fn, device="vta"):
+def generate_graph(graph_fn, params_fn, target):
     # Measure build start time
     build_start = time.time()
-
-    # Derive the TVM target
-    target = tvm.target.create("llvm -device={}".format(device))
 
     # Derive the LLVM compiler flags
     # When targetting the Pynq, cross-compile to ARMv7 ISA
     if env.TARGET == "sim":
         target_host = "llvm"
     elif env.TARGET == "pynq":
-        target_host = "llvm -mtriple=armv7-none-linux-gnueabihf -mcpu=cortex-a9 -mattr=+neon"
+        target_host = "llvm -target=armv7-none-linux-gnueabihf"
+    elif env.TARGET == 'ultra96':
+        target_host = "llvm -target=aarch64-linux-gnu"
 
     # Load the ResNet-18 graph and parameters
     sym = nnvm.graph.load_json(open(graph_fn).read())
@@ -152,10 +151,6 @@ for file in [categ_fn, graph_fn, params_fn]:
 # Read in ImageNet Categories
 synset = eval(open(os.path.join(data_dir, categ_fn)).read())
 
-# Download pre-tuned op parameters of conv2d for ARM CPU used in VTA
-autotvm.tophub.check_backend('vta')
-
-
 ######################################################################
 # Setup the Pynq Board's RPC Server
 # ---------------------------------
@@ -197,17 +192,19 @@ elif env.TARGET == "sim":
 # ------------------------
 # Build the ResNet graph runtime, and configure the parameters.
 
-# Set ``device=vtacpu`` to run inference on the CPU
-# or ``device=vta`` to run inference on the FPGA.
-device = "vta"
+# target = tvm.target.create('llvm -device=arm_cpu -model=pynq')    # run arm cpu on pynq
+# target = tvm.target.create('llvm -device=arm_cpu -model=ultra96') # run arm cpu on ultra96
+# target = tvm.target.create('llvm -device=vta -model=pynq')        # run vta on pynq
+# target = tvm.target.create('llvm -device=vta -model=ultra96')     # run vta on ultra96
+target = tvm.target.create('llvm -device=vta -model=pynq')
 
 # Device context
-ctx = remote.ext_dev(0) if device == "vta" else remote.cpu(0)
+ctx = remote.ext_dev(0) if target.device_name == "vta" else remote.cpu(0)
 
 # Build the graph runtime
 graph, lib, params = generate_graph(os.path.join(data_dir, graph_fn),
                                     os.path.join(data_dir, params_fn),
-                                    device)
+                                    target)
 m = graph_runtime.create(graph, lib, ctx)
 
 # Set the parameters
