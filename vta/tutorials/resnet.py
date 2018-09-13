@@ -59,7 +59,7 @@ def process_image(image):
 # Takes in the graph runtime, and an image, and returns top result and time
 def classify(m, image):
     m.set_input('data', image)
-    timer = m.module.time_evaluator("run", ctx, number=1)
+    timer = m.module.time_evaluator("run", ctx, number=3)
     tcost = timer()
     tvm_output = m.get_output(0)
     top = np.argmax(tvm_output.asnumpy()[0])
@@ -108,7 +108,6 @@ def generate_graph(graph_fn, params_fn, target):
                     params=params, target_host=target_host)
 
     # Save the compiled inference graph library
-    assert tvm.module.enabled("rpc")
     temp = util.tempdir()
     lib.save(temp.relpath("graphlib.o"))
 
@@ -192,15 +191,11 @@ elif env.TARGET == "sim":
 # ------------------------
 # Build the ResNet graph runtime, and configure the parameters.
 
-# llvm_command = 'llvm -device=arm_cpu -model=pynq {}'.format(env.llvm_triple) # run arm cpu on pynq
-# llvm_command = 'llvm -device=arm_cpu -model=ultra96 {}'.format(env.llvm_triple) # run arm cpu on ultra96
-# llvm_command = 'llvm -device=vta -model=pynq {}'.format(env.llvm_triple) # run vta cpu on pynq
-llvm_command = 'llvm -device=vta -model=ultra96 {}'.format(env.llvm_triple) # run vta cpu on ultra96
-
-target = tvm.target.create(llvm_command)
+#target = tvm.target.arm_cpu(env.TARGET)   # run on arm cpu
+target = tvm.target.vta(env.TARGET)
 
 # Device context
-ctx = remote.ext_dev(0) if target.device_name == "vta" else remote.cpu(0)
+ctx = remote.context(str(target))
 
 # Build the graph runtime
 graph, lib, params = generate_graph(os.path.join(data_dir, graph_fn),
@@ -230,7 +225,7 @@ image = process_image(image)
 m.set_input('data', image)
 
 # Perform inference
-timer = m.module.time_evaluator("run", ctx, number=1)
+timer = m.module.time_evaluator("run", ctx, number=4)
 tcost = timer()
 
 # Get classification results

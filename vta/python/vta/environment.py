@@ -227,34 +227,24 @@ class Environment(object):
         """GEMM intrinsic"""
         return self.dev.gemm
 
-    # TODO get rid of it
+    @property
+    def target(self):
+        return tvm.target.vta(model=self.TARGET)
+
     @property
     def target_host(self):
         """The target host"""
-        return "llvm " + self.llvm_triple
-
-    @property
-    def target_vta_cpu(self):
-        """The target host"""
         if self.TARGET == "pynq":
-            return "llvm -device=arm_cpu -model=pynq {}".format(self.llvm_triple)
+            return "llvm -target=armv7-none-linux-gnueabihf"
         elif self.TARGET == "ultra96":
-            return "llvm -device=arm_cpu -model=ultra96 {}".format(self.llvm_triple)
+            return "llvm -target=aarch64-linux-gnu"
         elif self.TARGET == "sim":
             return "llvm"
         raise ValueError("Unknown target %s" % self.TARGET)
 
     @property
-    def llvm_triple(self):
-        """The llvm flags for the target platform"""
-        if self.TARGET == "pynq":
-            return "-target=armv7-none-linux-gnueabihf"
-        elif self.TARGET == "ultra96":
-            return "-target=aarch64-linux-gnu"
-        elif self.TARGET == "sim":
-            return ""
-        else:
-            raise ValueError("Unknown target %s" % self.TARGET)
+    def target_vta_cpu(self):
+        return tvm.target.arm_cpu(model=self.TARGET)
 
 
 def get_env():

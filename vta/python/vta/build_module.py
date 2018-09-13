@@ -102,3 +102,39 @@ def build(*args, **kwargs):
         with build_config():
             return tvm.build(*args, **kwargs)
     return tvm.build(*args, **kwargs)
+
+
+def vta_autotvm_build_func(measure_input, tmp_dir, **kwargs):
+    """Custom build func for VTA. Used for autotvm"""
+
+    import time
+    import os
+    from random import getrandbits
+    from tvm.autotvm.util import get_const_tuple
+    from tvm.autotvm.measure.measure_methods import BuildResult, InstantiationError
+
+    tic = time.time()
+    try:
+        filename = os.path.join(tmp_dir, "tmp_func_%0x.tar" % getrandbits(64))
+        target, task, config = measure_input
+
+        with target:
+            s, args = task.instantiate(config)
+            if not config.valid():
+                raise InstantiationError(config.errors)
+
+            func = build(s, args, target_host=task.target_host)
+            func2 = build(s, args)
+
+        arg_info =  tuple((get_const_tuple(x.shape), x.dtype) for x in args)
+        func.export_library(filename)
+
+        # check by local simulator
+        ctx = tvm.context(str(target))
+        args = [tvm.nd.empty(x[0], dtype=x[1], ctx=ctx) for x in arg_info]
+        func2(*args)
+
+    except Exception as e:  # pylint: disable=broad-except
+        return BuildResult(None, None, e, time.time() - tic)
+    return BuildResult(filename, arg_info, None, time.time() - tic)
+

@@ -34,6 +34,10 @@ from . import vision
 from . import image
 from . import sparse
 from . import hls
+
+# some short cut
+from .util import InvalidShapeError
+
 # not import testing by default
 # because testing can have extra deps that are not necessary
 # we can import them from test cases explicitly

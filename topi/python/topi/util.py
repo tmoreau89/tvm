@@ -6,6 +6,10 @@ from numbers import Integral
 import tvm
 from . import tag
 
+class InvalidShapeError(ValueError):
+    """Invalid shape for a topi function. i.e. call winograd template for non-3x3 kernel)"""
+    pass
+
 def traverse_inline(s, final_op, callback):
     """Traverse computation graph and do auto inline
 

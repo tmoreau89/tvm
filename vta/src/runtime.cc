@@ -894,12 +894,12 @@ class CommandQueue {
     insn_queue_.InitSpace();
     device_ = VTADeviceAlloc();
     CHECK(device_ != nullptr);
-    printf("Initialize VTACommandHandle...\n");
+    //printf("Initialize VTACommandHandle...\n");
   }
 
   ~CommandQueue() {
     VTADeviceFree(device_);
-    printf("Close VTACommandhandle...\n");
+    //printf("Close VTACommandhandle...\n");
   }
 
   uint32_t GetElemBytes(uint32_t memory_id) {
