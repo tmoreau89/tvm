@@ -21,23 +21,24 @@ if { [string first $scripts_vivado_version $current_vivado_version] == -1 } {
 }
 
 # Parse argument list, derive the clock to utilize
-if { [llength $argv] eq 13 } {
-  set ip_path [lindex $argv 0]
-  set num_threads [lindex $argv 1]
-  set clock_freq [lindex $argv 2]
-  set gemm_ii [lindex $argv 3]
-  set inp_width [expr 1 << [lindex $argv 4]]
-  set wgt_width [expr 1 << [lindex $argv 5]]
-  set out_width [expr 1 << [lindex $argv 6]]
-  set batch [expr 1 << [lindex $argv 7]]
-  set out_block [expr 1 << [lindex $argv 8]]
-  set in_block [expr 1 << [lindex $argv 9]]
-  set inp_mem_size [expr 1 << [lindex $argv 10]]
-  set wgt_mem_size [expr 1 << [lindex $argv 11]]
-  set out_mem_size [expr 1 << [lindex $argv 12]]
+if { [llength $argv] eq 14 } {
+  set target [lindex $argv 0]
+  set ip_path [lindex $argv 1]
+  set num_threads [lindex $argv 2]
+  set clock_freq [lindex $argv 3]
+  set gemm_ii [lindex $argv 4]
+  set inp_width [expr 1 << [lindex $argv 5]]
+  set wgt_width [expr 1 << [lindex $argv 6]]
+  set out_width [expr 1 << [lindex $argv 7]]
+  set batch [expr 1 << [lindex $argv 8]]
+  set out_block [expr 1 << [lindex $argv 9]]
+  set in_block [expr 1 << [lindex $argv 10]]
+  set inp_mem_size [expr 1 << [lindex $argv 11]]
+  set wgt_mem_size [expr 1 << [lindex $argv 12]]
+  set out_mem_size [expr 1 << [lindex $argv 13]]
 } else {
-  puts "Arg list incomplete: <path to ip dir> <num threads> <clock freq> <gemm ii> \
-    <inp width> <wgt_width> <out_width> <batch> <batch> <out_block> <in_block
+  puts "Arg list incomplete: <target> <path to ip dir> <num threads> <clock freq> \
+    <gemm ii> <inp width> <wgt_width> <out_width> <batch> <batch> <out_block> <in_block> \
     <inp_mem_size> <wgt_mem_size> <out_mem_size>"
   return 1
 }
@@ -82,8 +83,13 @@ set compute_ip "${ip_path}/vta_compute/solution0/impl/ip/xilinx_com_hls_compute_
 set store_ip "${ip_path}/vta_store/solution0/impl/ip/xilinx_com_hls_store_1_0.zip"
 
 # Create custom project
-create_project -force $proj_name $proj_path -part xczu3eg-sbva484-1-e
-set_property BOARD_PART em.avnet.com:ultra96:part0:1.0 [current_project]
+if { ${target} eq "ultra96" } {
+  create_project -force $proj_name $proj_path -part xczu3eg-sbva484-1-e
+  set_property BOARD_PART em.avnet.com:ultra96:part0:1.0 [current_project]
+} elseif { ${target} eq "zcu102" } {
+  create_project -force $proj_name $proj_path -part xczu9eg-ffvb1156-2-e
+  set_property BOARD_PART xilinx.com:zcu102:part0:3.2 [current_project]
+}
 
 # Update IP repository with generated IP
 file mkdir $ip_lib

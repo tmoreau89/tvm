@@ -149,7 +149,7 @@ class Environment(object):
         self._mock_env = None
         self._dev_ctx = None
         self._last_env = None
-        #  derive bitstream name
+        # derive bitstream name
         self.BITSTREAM = "{}/{}/{}x{}x{}_a{}w{}o{}_{}_{}_{}_{}_{}MHz_{}ns_gii{}".format(
             self.HW_VER.replace('.', '_'),
             self.TARGET,
@@ -171,6 +171,21 @@ class Environment(object):
         if self.MUL_EN and self.ALU_EN:
             self.BITSTREAM += "_mul"
         self.BITSTREAM += ".bit"
+        # model - autoTVM signature that identifies VTA configuration.
+        # This is WIP: knobs that could influence the efficacy of the
+        # schedule have been left out for now.
+        self.MODEL = "{}-{}x{}x{}_a{}w{}o{}_{}_{}_{}_{}".format(
+            self.TARGET,
+            self.BATCH,
+            self.BLOCK_IN,
+            self.BLOCK_OUT,
+            self.INP_WIDTH,
+            self.WGT_WIDTH,
+            self.OUT_WIDTH,
+            self.LOG_UOP_BUFF_SIZE,
+            self.LOG_INP_BUFF_SIZE,
+            self.LOG_WGT_BUFF_SIZE,
+            self.LOG_ACC_BUFF_SIZE)
 
     def __enter__(self):
         self._last_env = Environment.current

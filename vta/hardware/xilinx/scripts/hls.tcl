@@ -93,13 +93,21 @@ proc init_design {target per g_ii a_ii inp_width wgt_width out_width acc_width b
 		set_part {xc7z020clg484-1}
 	} elseif {$target=="ultra96"} {
 		set_part {xczu3eg-sbva484-1-e}
+	} elseif {$target=="zcu102"} {
+		set_part {xczu9eg-ffvb1156-2-e}
 	}
 
 	# Max bus width (supported by Vivado)
 	set max_width 1024
 
 	# Set axi width (TODO derive from top level config)
-	set axi_width 128
+	if {$target=="pynq"} {
+		set axi_width 64
+	} elseif {$target=="ultra96"} {
+		set axi_width 128
+	} elseif {$target=="zcu102"} {
+		set axi_width 128
+	}
 
 	# Set the clock frequency
 	create_clock -period $per -name default

@@ -65,7 +65,8 @@ def extract_from_graph(graph, shape, dtype, target, symbols, target_host=None):
 
         # run compiler to collect all TOPI calls during compilation
         nnvm.compiler.engine.clear_cache()
-        nnvm.compiler.build(graph, target=target, shape=shape, dtype=dtype)
+        with ApplyHistoryBest([]):
+            nnvm.compiler.build(graph, target=target, shape=shape, dtype=dtype)
         nnvm.compiler.engine.clear_cache()
 
         logger.disabled = old_state

@@ -446,6 +446,10 @@ def run_through_rpc(measure_input, build_result,
     try:
         # upload built module
         remote = request_remote(*remote_args)
+        if measure_input.target.device_name == 'vta':
+            from vta import program_fpga, reconfig_runtime
+            program_fpga(remote, None)
+            reconfig_runtime(remote)
         remote.upload(build_result.filename)
         func = remote.load_module(os.path.split(build_result.filename)[1])
         ctx = remote.context(str(measure_input.target), 0)

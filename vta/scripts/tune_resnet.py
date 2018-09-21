@@ -159,10 +159,9 @@ def tune_tasks(tasks,
     os.remove(tmp_log_file)
 
 if __name__ == '__main__':
-    device_key = env.TARGET
 
     tuning_opt = {
-        'log_filename': 'resnet-18.log',
+        'log_filename': 'resnet-18-{}.log'.format(env.MODEL),
 
         'tuner': 'random',
         'n_trial': 1e9,
@@ -170,7 +169,7 @@ if __name__ == '__main__':
 
         'measure_option':  autotvm.measure_option(
                 builder=autotvm.LocalBuilder(build_func=vta.vta_autotvm_build_func),
-                runner=autotvm.RPCRunner(device_key, 'fleet', 9190,
+                runner=autotvm.RPCRunner(env.TARGET, 'fleet', 9190,
                     number=4, repeat=3, timeout=60,
                     check_correctness=True))
     }
@@ -182,7 +181,7 @@ if __name__ == '__main__':
     register_vta_tuning_tasks()
 
     print("Extract tasks...")
-    target = tvm.target.vta(device_key)
+    target = tvm.target.vta(env.MODEL)
     target_host = env.target_host
     tasks = extract_tasks(sym, params, target, target_host)
 
@@ -203,7 +202,7 @@ if __name__ == '__main__':
 
         # upload module to device
         print("Upload...")
-        remote = autotvm.measure.request_remote(device_key, 'fleet', 9190, timeout=10000)
+        remote = autotvm.measure.request_remote(env.TARGET, 'fleet', 9190, timeout=10000)
         remote.upload(tmp.relpath(filename))
         rlib = remote.load_module(filename)
 

@@ -81,6 +81,21 @@ class PkgConfig(object):
         return self.include_path + self.macro_defs
 
     @property
+    def signature(self):
+        return "{}-{}_{}_{}_{}_{}_{}_{}_{}_{}_{}".format(
+                self.cfg_dict["TARGET"],
+                self.cfg_dict["LOG_BATCH"],
+                self.cfg_dict["LOG_BLOCK_IN"],
+                self.cfg_dict["LOG_BLOCK_OUT"],
+                self.cfg_dict["LOG_INP_WIDTH"],
+                self.cfg_dict["LOG_WGT_WIDTH"],
+                self.cfg_dict["LOG_OUT_WIDTH"],
+                self.cfg_dict["LOG_UOP_BUFF_SIZE"],
+                self.cfg_dict["LOG_INP_BUFF_SIZE"],
+                self.cfg_dict["LOG_WGT_BUFF_SIZE"],
+                self.cfg_dict["LOG_ACC_BUFF_SIZE"])
+
+    @property
     def cfg_json(self):
         return json.dumps(self.cfg_dict, indent=2)
 

@@ -49,12 +49,11 @@ def conv2d(N, CI, H, W, CO, KH, KW, strides, padding, in_dtype, out_dtype):
     return s, [data, kernel, bias, res] 
 
 if __name__ == '__main__':
-    model = env.TARGET
     N, CI, H, W, CO, KH, KW, strides, padding, in_dtype, out_dtype = \
         1, 64, 56, 56, 64, 3, 3, (1, 1), (1, 1), 'int8', 'int32'
 
     task = autotvm.task.create(conv2d, args=(N, CI, H, W, CO, KH, KW, strides, padding, in_dtype, out_dtype),
-            target=tvm.target.vta(model), target_host=env.target_host, template_key='direct')
+            target=tvm.target.vta(env.MODEL), target_host=env.target_host, template_key='direct')
     print(task.config_space)
 
     # logging config (for printing tuning log to the screen)
@@ -63,7 +62,7 @@ if __name__ == '__main__':
 
     measure_option = autotvm.measure_option(
             builder=autotvm.LocalBuilder(build_func=vta.vta_autotvm_build_func),
-            runner=autotvm.RPCRunner(model, 'fleet', 9190, number=4, repeat=3, timeout=30,
+            runner=autotvm.RPCRunner(env.TARGET, 'fleet', 9190, number=4, repeat=3, timeout=30,
                                      check_correctness=True))
 
     tuner = autotvm.tuner.RandomTuner(task)
