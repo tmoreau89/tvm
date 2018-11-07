@@ -72,7 +72,7 @@ def compute_conv2d(attrs, inputs, out):
                 kshape[-1] *= w_pack_factor
                 inputs[1] = reinterpret(inputs[1], kshape, dtype=env.wgt_dtype)
 
-            return topi.nn.conv2d(inputs[0], inputs[1], strides, padding, layout, out_dtype)
+            return topi.nn.conv2d(inputs[0], inputs[1], strides, padding, dilation, layout, out_dtype)
         else:
             return packed_group_conv2d(inputs[0], inputs[1], padding, strides, groups, out_dtype)
 

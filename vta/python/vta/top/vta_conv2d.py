@@ -11,10 +11,11 @@ from .op import is_packed_layout
 
 
 @autotvm.register_topi_compute(topi.nn.conv2d, 'vta', 'direct')
-def packed_conv2d(cfg, data, kernel, strides, padding, layout, out_dtype):
+def packed_conv2d(cfg, data, kernel, strides, padding, dilation, layout, out_dtype):
     """ Packed conv2d function."""
     if not is_packed_layout(layout):
         raise topi.InvalidShapeError()
+    assert dilation == (1, 1)
 
     if padding[0]:
         pad_data = topi.nn.pad(data, [0, 0, padding[0], padding[1], 0, 0], name="pad_data")
