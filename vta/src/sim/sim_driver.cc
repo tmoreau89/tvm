@@ -460,7 +460,7 @@ class Device {
                   sum +=
                       inp.GetSigned(i * VTA_BLOCK_IN + k) *
                       wgt.GetSigned(j * VTA_BLOCK_IN + k);
-                  sum = IntTrunc(sum, VTA_ACC_TRUC_BITS);
+                  sum = IntTrunc(sum, VTA_REG_WIDTH);
                 }
                 acc.SetSigned(acc_offset, sum);
               }
@@ -555,7 +555,7 @@ class Device {
             } else {
               value = func(dst.GetSigned(k), src.GetSigned(k));
             }
-            dst.SetSigned(k, IntTrunc(value, VTA_ACC_TRUC_BITS));
+            dst.SetSigned(k, IntTrunc(value, VTA_REG_WIDTH));
           }
         }
       }
