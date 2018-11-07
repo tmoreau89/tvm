@@ -238,7 +238,7 @@ print("                     #2:", synset[top_categories[-2]])
 print("                     #3:", synset[top_categories[-3]])
 print("                     #4:", synset[top_categories[-4]])
 print("                     #5:", synset[top_categories[-5]])
-print("Performed inference in {0:.2f}s".format(tcost.mean))
+print("Performed inference in {0:.1f}ms".format(tcost.mean*1000.0))
 
 
 ######################################################################

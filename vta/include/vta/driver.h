@@ -23,7 +23,7 @@ extern "C" {
 
 /*! \brief Physically contiguous buffer size limit in B */
 #ifndef VTA_MAX_XFER
-#define VTA_MAX_XFER (1<<22)
+#define VTA_MAX_XFER (1 << 25)
 #endif
 
 /*! \brief Device resource context  */

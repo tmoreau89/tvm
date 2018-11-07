@@ -24,13 +24,14 @@
 # Arg 17: batch size (log)
 # Arg 18: in block size (log)
 # Arg 19: out block size (log)
-# Arg 20: uop buffer size in B (log)
-# Arg 21: inp buffer size in B (log)
-# Arg 22: wgt buffer size in B (log)
-# Arg 23: acc buffer size in B (log)
-# Arg 24: out buffer size in B (log)
+# Arg 20: bus width in b (log)
+# Arg 21: uop buffer size in B (log)
+# Arg 22: inp buffer size in B (log)
+# Arg 23: wgt buffer size in B (log)
+# Arg 24: acc buffer size in B (log)
+# Arg 25: out buffer size in B (log)
 
-if { [llength $argv] eq 26 } {
+if { [llength $argv] eq 27 } {
 	set target [lindex $argv 2]
 	set src_dir [lindex $argv 3]
 	set sim_dir [lindex $argv 4]
@@ -50,43 +51,24 @@ if { [llength $argv] eq 26 } {
 	set batch [lindex $argv 18]
 	set block_in [lindex $argv 19]
 	set block_out [lindex $argv 20]
-	set uop_buff_size [lindex $argv 21]
-	set inp_buff_size [lindex $argv 22]
-	set wgt_buff_size [lindex $argv 23]
-	set acc_buff_size [lindex $argv 24]
-	set out_buff_size [lindex $argv 25]
+	set bus_width [lindex $argv 21]
+	set uop_buff_size [lindex $argv 22]
+	set inp_buff_size [lindex $argv 23]
+	set wgt_buff_size [lindex $argv 24]
+	set acc_buff_size [lindex $argv 25]
+	set out_buff_size [lindex $argv 26]
 } else {
-	set target "pynq"
-	set src_dir "../src"
-	set sim_dir "../sim"
-	set test_dir "../../src/test"
-	set include_dir "../../include"
-	set mode "all"
-	set debug "False"
-	set alu_ena "True"
-	set mul_ena "True"
-	set target_period 8
-	set target_gemm_ii 10
-	set target_alu_ii 16
-	set inp_width 3
-	set wgt_width 3
-	set acc_width 5
-	set out_width 3
-	set batch 1
-	set block_in 4
-	set block_out 4
-	set uop_buff_size 15
-	set inp_buff_size 15
-	set wgt_buff_size 15
-	set acc_buff_size 17
-	set out_buff_size 15
+	puts "Not enough arguments provided!"
 	exit
 }
+
+puts "about to start doing some stuff"
+
 
 # Initializes the HLS design and sets HLS pragmas for memory partitioning.
 # This is necessary because of a Vivado restriction that doesn't allow for
 # buses wider than 1024 bits.
-proc init_design {target per g_ii a_ii inp_width wgt_width out_width acc_width batch block_in block_out alu_ena} {
+proc init_design {target per g_ii a_ii bus_width inp_width wgt_width out_width acc_width batch block_in block_out alu_ena} {
 
 	# Set device number
 	if {$target=="pynq"} {
@@ -95,28 +77,25 @@ proc init_design {target per g_ii a_ii inp_width wgt_width out_width acc_width b
 		set_part {xczu3eg-sbva484-1-e}
 	} elseif {$target=="zcu102"} {
 		set_part {xczu9eg-ffvb1156-2-e}
+	} elseif {$target=="f1"} {
+		set_part {xcvu9p-flgb2104-2-i}
+		# config_interface -m_axi_addr64
 	}
 
 	# Max bus width (supported by Vivado)
 	set max_width 1024
 
-	# Set axi width (TODO derive from top level config)
-	if {$target=="pynq"} {
-		set axi_width 64
-	} elseif {$target=="ultra96"} {
-		set axi_width 128
-	} elseif {$target=="zcu102"} {
-		set axi_width 128
-	}
+	# Set axi width
+	set axi_width [expr {1 << $bus_width}]
 
 	# Set the clock frequency
 	create_clock -period $per -name default
 
 	# Set pipeline directive
-	set_directive_pipeline -II $g_ii "compute/READ_GEMM_UOP"
+	set_directive_pipeline -II $g_ii "gemm/READ_GEMM_UOP"
 
 	if {$alu_ena=="True"} {
-		set_directive_pipeline -II $a_ii "compute/READ_ALU_UOP"
+		set_directive_pipeline -II $a_ii "alu/READ_ALU_UOP"
 	}
 
 	# Set input partition factor to (INP_VECTOR_WIDTH*BATCH/(1024*g_ii)
@@ -174,7 +153,8 @@ set cflags "-I $include_dir -I $src_dir -I $test_dir \
 	-DVTA_LOG_BATCH=$batch -DVTA_LOG_BLOCK_OUT=$block_out -DVTA_LOG_BLOCK_IN=$block_in \
 	-DVTA_LOG_UOP_BUFF_SIZE=$uop_buff_size -DVTA_LOG_INP_BUFF_SIZE=$inp_buff_size \
 	-DVTA_LOG_WGT_BUFF_SIZE=$wgt_buff_size -DVTA_LOG_ACC_BUFF_SIZE=$acc_buff_size \
-	-DVTA_LOG_OUT_BUFF_SIZE=$out_buff_size"
+	-DVTA_LOG_OUT_BUFF_SIZE=$out_buff_size -DVTA_LOG_BUS_WIDTH=$bus_width \
+	-DVTA_GEMM_II=$target_gemm_ii"
 if {$debug=="True"} {
 	append cflags " -DVTA_DEBUG=1"
 }
@@ -185,6 +165,7 @@ if {$mul_ena=="True"} {
 	append cflags " -DMUL_EN"
 }
 
+
 # HLS behavioral sim
 if {$mode=="all" || $mode=="sim"} {
 	open_project vta_sim
@@ -193,7 +174,7 @@ if {$mode=="all" || $mode=="sim"} {
 	add_files -tb $sim_dir/vta_test.cc -cflags $cflags
 	add_files -tb $test_dir/test_lib.cc -cflags $cflags
 	open_solution "solution0"
-	init_design $target $target_period $target_gemm_ii $target_alu_ii $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $alu_ena
+	init_design $target $target_period $target_gemm_ii $target_alu_ii $bus_width $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $alu_ena
 	csim_design -clean
 	close_project
 }
@@ -204,7 +185,7 @@ if {$mode=="all" || $mode=="skip_sim" || $mode=="fetch"} {
 	set_top fetch
 	add_files $src_dir/vta.cc -cflags $cflags
 	open_solution "solution0"
-	init_design $target $target_period $target_gemm_ii $target_alu_ii $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $alu_ena
+	init_design $target $target_period $target_gemm_ii $target_alu_ii $bus_width $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $alu_ena
 	csynth_design
 	if {$mode=="all" || $mode=="skip_sim"} {
 		export_design -format ip_catalog
@@ -218,7 +199,7 @@ if {$mode=="all" || $mode=="skip_sim" || $mode=="load"} {
 	set_top load
 	add_files $src_dir/vta.cc -cflags $cflags
 	open_solution "solution0"
-	init_design $target $target_period $target_gemm_ii $target_alu_ii $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $alu_ena
+	init_design $target $target_period $target_gemm_ii $target_alu_ii $bus_width $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $alu_ena
 	csynth_design
 	if {$mode=="all" || $mode=="skip_sim"} {
 		export_design -format ip_catalog
@@ -232,7 +213,7 @@ if {$mode=="all" || $mode=="skip_sim" || $mode=="compute"} {
 	set_top compute
 	add_files $src_dir/vta.cc -cflags $cflags
 	open_solution "solution0"
-	init_design $target $target_period $target_gemm_ii $target_alu_ii $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $alu_ena
+	init_design $target $target_period $target_gemm_ii $target_alu_ii $bus_width $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $alu_ena
 	csynth_design
 	if {$mode=="all" || $mode=="skip_sim"} {
 		export_design -format ip_catalog
@@ -246,7 +227,7 @@ if {$mode=="all" || $mode=="skip_sim" || $mode=="store"} {
 	set_top store
 	add_files $src_dir/vta.cc -cflags $cflags
 	open_solution "solution0"
-	init_design $target $target_period $target_gemm_ii $target_alu_ii $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $alu_ena
+	init_design $target $target_period $target_gemm_ii $target_alu_ii $bus_width $inp_width $wgt_width $out_width $acc_width $batch $block_in $block_out $alu_ena
 	csynth_design
 	if {$mode=="all" || $mode=="skip_sim"} {
 		export_design -format ip_catalog

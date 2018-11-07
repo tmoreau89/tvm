@@ -60,6 +60,8 @@ def main():
                         help="returns log of tensor block in dimension")
     parser.add_argument("--get-blockout", action="store_true",
                         help="returns log of tensor block out dimension")
+    parser.add_argument("--get-buswidth", action="store_true",
+                        help="returns log of bus width in b")
     parser.add_argument("--get-uopbuffsize", action="store_true",
                         help="returns log of micro-op buffer size in B")
     parser.add_argument("--get-inpbuffsize", action="store_true",
@@ -181,6 +183,9 @@ def main():
 
     if args.get_blockout:
         print(cfg["LOG_BLOCK_OUT"])
+
+    if args.get_buswidth:
+        print(cfg["LOG_BUS_WIDTH"])
 
     if args.get_uopbuffsize:
         print(cfg["LOG_UOP_BUFF_SIZE"])

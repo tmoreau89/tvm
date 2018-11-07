@@ -184,6 +184,7 @@ def run_vta_conv2d(env, remote, wl, target, check_correctness=True, print_ir=Fal
                   1, 1, env.BATCH, env.BLOCK_OUT)
     data = tvm.placeholder(data_shape, name="data", dtype=env.inp_dtype)
     bias = tvm.placeholder(bias_shape, name="kernel", dtype=env.acc_dtype)
+    factor = tvm.placeholder(bias_shape, name="kernel", dtype=env.acc_dtype)
 
     # Handle quantized inputs (less than 8 bits)
     # x_pack_factor = 1 << (3 - env.LOG_INP_WIDTH)
@@ -205,6 +206,7 @@ def run_vta_conv2d(env, remote, wl, target, check_correctness=True, print_ir=Fal
             "NCHW%dn%dc" % (env.BATCH, env.BLOCK_IN), 'int32')
         res = topi.right_shift(res_conv, 8)
         res = topi.add(res, bias)
+        res = topi.multiply(res, factor)
         res = my_clip(res, 0, (1 << env.OUT_WIDTH-1)-1)
         res = topi.cast(res, "int8")
 
@@ -217,7 +219,7 @@ def run_vta_conv2d(env, remote, wl, target, check_correctness=True, print_ir=Fal
                                          #skip_alu=skip_alu,
                                          #skip_gemm=skip_gemm)
         if print_ir:
-            print(vta.lower(s, [data, kernel_arg, bias, res], simple_mode=True))
+            print(vta.lower(s, [data, kernel_arg, bias, factor, res], simple_mode=True))
 
     # Handle quantized outputs (less than 8 bits)
     # o_pack_factor = 1 << (3 - env.LOG_OUT_WIDTH)
@@ -249,15 +251,19 @@ def run_vta_conv2d(env, remote, wl, target, check_correctness=True, print_ir=Fal
         return a_np, w_np, b_np
 
     mod = vta.build(s,
-                    [data, kernel_arg, bias, res],
+                    [data, kernel_arg, bias, factor, res],
                     target,
                     env.target_host, name="conv2d")
 
     # Data in original format
     data_orig, kernel_orig, res_ref = get_ref_data()
-    bias_orig = (np.random.uniform(size=(wl.batch, wl.out_filter,)) * (1 << (env.INP_WIDTH + env.WGT_WIDTH - 2)))
+    bias_orig = np.random.uniform(size=(wl.batch, wl.out_filter,)) * (1 << (env.INP_WIDTH + env.WGT_WIDTH - 2))
     bias_orig = bias_orig.astype("int32")
     bias_orig = np.abs(bias_orig)
+    factor_orig = (np.random.uniform(size=(wl.batch, wl.out_filter,)) * (1 << 7))
+    factor_orig = factor_orig.astype("int32")
+    factor_orig = np.abs(factor_orig)
+
 
     data_packed = data_orig.reshape(
         wl.batch//env.BATCH, env.BATCH,
@@ -267,6 +273,9 @@ def run_vta_conv2d(env, remote, wl, target, check_correctness=True, print_ir=Fal
         wl.out_filter//env.BLOCK_OUT, env.BLOCK_OUT,
         wl.in_filter//env.BLOCK_IN, env.BLOCK_IN,
         wl.hkernel, wl.wkernel).transpose((0, 2, 4, 5, 1, 3))
+    factor_packed = factor_orig.reshape(
+        wl.batch // env.BATCH, wl.out_filter // env.BLOCK_OUT,
+        1, 1, env.BATCH, env.BLOCK_OUT)
     bias_packed = bias_orig.reshape(
         wl.batch // env.BATCH, wl.out_filter // env.BLOCK_OUT,
         1, 1, env.BATCH, env.BLOCK_OUT)
@@ -285,6 +294,7 @@ def run_vta_conv2d(env, remote, wl, target, check_correctness=True, print_ir=Fal
     res_np = np.zeros(res_shape).astype(res.dtype)
     data_arr = tvm.nd.array(data_qpacked, ctx)
     kernel_arr = tvm.nd.array(kernel_qpacked, ctx)
+    factor_arr = tvm.nd.array(factor_packed, ctx)
     bias_arr = tvm.nd.array(bias_packed, ctx)
     res_arr = tvm.nd.array(res_np, ctx)
     time_f = f.time_evaluator("conv2d", ctx, number=samples)
@@ -300,16 +310,16 @@ def run_vta_conv2d(env, remote, wl, target, check_correctness=True, print_ir=Fal
             remote.get_function("vta.simulator.profiler_clear")()
             if profileOnly:
                 remote.get_function("vta.simulator.profiler_debug_mode")(1)
-            cost = time_f(data_arr, kernel_arr, bias_arr, res_arr)
+            cost = time_f(data_arr, kernel_arr, bias_arr, factor_arr, res_arr)
             stats = json.loads(remote.get_function("vta.simulator.profiler_status")())
         else:
             simulator.clear_stats()
             if profileOnly:
                 simulator.debug_mode(1)
-            cost = time_f(data_arr, kernel_arr, bias_arr, res_arr)
+            cost = time_f(data_arr, kernel_arr, bias_arr, factor_arr, res_arr)
             stats = simulator.stats()
     else:
-        cost = time_f(data_arr, kernel_arr, bias_arr, res_arr)
+        cost = time_f(data_arr, kernel_arr, bias_arr, factor_arr, res_arr)
 
     # Check correctness
     correct = False
@@ -323,12 +333,14 @@ def run_vta_conv2d(env, remote, wl, target, check_correctness=True, print_ir=Fal
         padding = wl.hpad
         res_ref = res_ref >> 8
         res_ref += bias_orig.reshape(wl.out_filter, 1, 1)
+        res_ref *= factor_orig.reshape(wl.out_filter, 1, 1)
         res_ref = np.clip(res_ref, 0, (1 << env.OUT_WIDTH-1)-1)
         res_ref = res_ref.astype("int8")
         correct = np.allclose(res_unpack, res_ref)
 
     gops = (num_ops / cost.mean) / float(10 ** 9)
-    print("VTA TEST: Time cost = %g sec/op, %g GOPS\n" % (cost.mean, gops))
+    status = "PASSED" if correct else "FAILED"
+    print("VTA TEST %s: Time cost = %g sec/op, %g GOPS" % (status, cost.mean, gops))
 
     return correct, cost, stats
 

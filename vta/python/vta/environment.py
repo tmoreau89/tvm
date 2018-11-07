@@ -116,6 +116,8 @@ class Environment(object):
         self.BATCH = 1 << self.LOG_BATCH
         self.BLOCK_IN = 1 << self.LOG_BLOCK_IN
         self.BLOCK_OUT = 1 << self.LOG_BLOCK_OUT
+        # bus width
+        self.BUS_WIDTH = 1 << self.LOG_BUS_WIDTH
         # buffer size
         self.UOP_BUFF_SIZE = 1 << self.LOG_UOP_BUFF_SIZE
         self.INP_BUFF_SIZE = 1 << self.LOG_INP_BUFF_SIZE
@@ -150,7 +152,7 @@ class Environment(object):
         self._dev_ctx = None
         self._last_env = None
         # derive bitstream name
-        self.BITSTREAM = "{}/{}/{}x{}x{}_a{}w{}o{}_{}_{}_{}_{}_{}MHz_{}ns_gii{}".format(
+        self.BITSTREAM = "{}/{}/{}x{}x{}_a{}w{}o{}_{}_{}_{}_{}_{}_{}MHz_{}ns_gii{}".format(
             self.HW_VER.replace('.', '_'),
             self.TARGET,
             self.BATCH,
@@ -159,6 +161,7 @@ class Environment(object):
             self.INP_WIDTH,
             self.WGT_WIDTH,
             self.OUT_WIDTH,
+            self.LOG_BUS_WIDTH,
             self.LOG_UOP_BUFF_SIZE,
             self.LOG_INP_BUFF_SIZE,
             self.LOG_WGT_BUFF_SIZE,
@@ -174,7 +177,7 @@ class Environment(object):
         # model - autoTVM signature that identifies VTA configuration.
         # This is WIP: knobs that could influence the efficacy of the
         # schedule have been left out for now.
-        self.MODEL = "{}-{}x{}x{}_a{}w{}o{}_{}_{}_{}_{}".format(
+        self.MODEL = "{}-{}x{}x{}_a{}w{}o{}_{}_{}_{}_{}_{}".format(
             self.TARGET,
             self.BATCH,
             self.BLOCK_IN,
@@ -182,6 +185,7 @@ class Environment(object):
             self.INP_WIDTH,
             self.WGT_WIDTH,
             self.OUT_WIDTH,
+            self.LOG_BUS_WIDTH,
             self.LOG_UOP_BUFF_SIZE,
             self.LOG_INP_BUFF_SIZE,
             self.LOG_WGT_BUFF_SIZE,

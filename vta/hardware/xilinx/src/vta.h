@@ -13,8 +13,9 @@
 
 #include <vta/hw_spec.h>
 
-/* \typedef axi_T AXI datatype*/
-typedef ap_uint<VTA_AXI_WIDTH> axi_T;
+
+/* \typedef bus_T memory bus datatype*/
+typedef ap_uint<VTA_BUS_WIDTH> bus_T;
 
 /* \typedef uop_T Micro-op datatype*/
 typedef ap_uint<VTA_UOP_WIDTH> uop_T;
@@ -124,13 +125,13 @@ void fetch(
 * \param wgt_mem Local weight SRAM buffer. Write only single port BRAM.
 */
 void load(
-  volatile axi_T *inputs,
-  volatile axi_T *weights,
+  volatile bus_T *inputs,
+  volatile bus_T *weights,
   hls::stream<insn_T> &load_queue,
   hls::stream<bool> &g2l_dep_queue,
   hls::stream<bool> &l2g_dep_queue,
-  axi_T inp_mem[VTA_INP_BUFF_DEPTH][INP_MAT_AXI_RATIO],
-  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_MAT_AXI_RATIO]);
+  bus_T inp_mem[VTA_INP_BUFF_DEPTH][INP_MAT_AXI_RATIO],
+  bus_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_MAT_AXI_RATIO]);
 
 /*!
 * \brief Compute module.
@@ -158,15 +159,15 @@ void load(
 void compute(
   volatile uint32_t &done,
   volatile uop_T *uops,
-  volatile axi_T *biases,
+  volatile bus_T *biases,
   hls::stream<insn_T> &gemm_queue,
   hls::stream<bool> &l2g_dep_queue,
   hls::stream<bool> &s2g_dep_queue,
   hls::stream<bool> &g2l_dep_queue,
   hls::stream<bool> &g2s_dep_queue,
-  axi_T inp_mem[VTA_INP_BUFF_DEPTH][INP_MAT_AXI_RATIO],
-  axi_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_MAT_AXI_RATIO],
-  axi_T out_mem[VTA_ACC_BUFF_DEPTH][OUT_MAT_AXI_RATIO]);
+  bus_T inp_mem[VTA_INP_BUFF_DEPTH][INP_MAT_AXI_RATIO],
+  bus_T wgt_mem[VTA_WGT_BUFF_DEPTH][WGT_MAT_AXI_RATIO],
+  bus_T out_mem[VTA_ACC_BUFF_DEPTH][OUT_MAT_AXI_RATIO]);
 
 /*!
 * \brief Store module.
@@ -182,11 +183,11 @@ void compute(
 * \param out_mem Local output SRAM buffer. Read only single port BRAM.
 */
 void store(
-  volatile axi_T *outputs,
+  volatile bus_T *outputs,
   hls::stream<insn_T> &store_queue,
   hls::stream<bool> &g2s_dep_queue,
   hls::stream<bool> &s2g_dep_queue,
-  axi_T out_mem[VTA_ACC_BUFF_DEPTH][OUT_MAT_AXI_RATIO]);
+  bus_T out_mem[VTA_ACC_BUFF_DEPTH][OUT_MAT_AXI_RATIO]);
 
 /*!
 * \brief VTA wrapper for simulation purpose only.
@@ -203,9 +204,9 @@ void vta(
   uint32_t insn_count,
   volatile insn_T *insns,
   volatile uop_T *uops,
-  volatile axi_T *inputs,
-  volatile axi_T *weights,
-  volatile axi_T *biases,
-  volatile axi_T *outputs);
+  volatile bus_T *inputs,
+  volatile bus_T *weights,
+  volatile bus_T *biases,
+  volatile bus_T *outputs);
 
 #endif  // VTA_VTA_H_

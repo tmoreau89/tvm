@@ -14,7 +14,7 @@ VIVADO = vivado
 HSI = hsi
 
 # HLS mode
-MODE = skip_sim
+MODE = all
 # Debug flag
 DEBUG = False
 # SLURM
@@ -35,6 +35,7 @@ VTA_OUT_WIDTH := $(shell ${VTA_CONFIG} --get-outwidth)
 VTA_BATCH := $(shell ${VTA_CONFIG} --get-batch)
 VTA_IN_BLOCK := $(shell ${VTA_CONFIG} --get-blockin)
 VTA_OUT_BLOCK := $(shell ${VTA_CONFIG} --get-blockout)
+VTA_BUS_WIDTH := $(shell ${VTA_CONFIG} --get-buswidth)
 VTA_UOP_BUFF_SIZE := $(shell ${VTA_CONFIG} --get-uopbuffsize)
 VTA_INP_BUFF_SIZE := $(shell ${VTA_CONFIG} --get-inpbuffsize)
 VTA_WGT_BUFF_SIZE := $(shell ${VTA_CONFIG} --get-wgtbuffsize)
@@ -90,7 +91,7 @@ $(IP_PATH): $(SRC_DIR)/*
 		$(MODE) $(DEBUG) $(VTA_ALU_EN) $(VTA_MUL_EN) \
 		$(VTA_TARGET_PER) $(VTA_GEMM_II) $(VTA_TALU_II) \
 		$(VTA_INP_WIDTH) $(VTA_WGT_WIDTH) $(VTA_ACC_WIDTH) $(VTA_OUT_WIDTH) \
-		$(VTA_BATCH) $(VTA_IN_BLOCK) $(VTA_OUT_BLOCK) \
+		$(VTA_BATCH) $(VTA_IN_BLOCK) $(VTA_OUT_BLOCK) $(VTA_BUS_WIDTH) \
 		$(VTA_UOP_BUFF_SIZE) $(VTA_INP_BUFF_SIZE) $(VTA_WGT_BUFF_SIZE) \
 		$(VTA_ACC_BUFF_SIZE) $(VTA_OUT_BUFF_SIZE)
 ifeq ($(SLURM), True)
@@ -101,7 +102,7 @@ endif
 $(BIT_PATH): $(IP_PATH)
 	mkdir -p $(HW_BUILD_PATH)
 	cd $(HW_BUILD_PATH) && \
-		$(VIVADO) -mode tcl -source $(SCRIPT_DIR)/ultra96.tcl \
+		$(VIVADO) -mode tcl -source $(SCRIPT_DIR)/vivado.tcl \
 		-tclargs $(VTA_TARGET) $(BUILD_DIR)/hls/$(CONF) $(VTA_HW_COMP_THREADS) \
 		$(VTA_CLOCK_FREQ) $(VTA_GEMM_II) \
 		$(VTA_INP_WIDTH) $(VTA_WGT_WIDTH) $(VTA_OUT_WIDTH) \

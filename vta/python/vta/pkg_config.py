@@ -36,6 +36,7 @@ class PkgConfig(object):
         "LOG_BATCH",
         "LOG_BLOCK_IN",
         "LOG_BLOCK_OUT",
+        "LOG_BUS_WIDTH",
         "LOG_UOP_BUFF_SIZE",
         "LOG_INP_BUFF_SIZE",
         "LOG_WGT_BUFF_SIZE",
@@ -72,7 +73,7 @@ class PkgConfig(object):
         elif self.target == "ultra96":
             self.ldflags = [
                 "-L/usr/lib",
-                "-lsds_lib"]
+                "-lcma"]
         else:
             self.ldflags = []
 
@@ -82,7 +83,7 @@ class PkgConfig(object):
 
     @property
     def signature(self):
-        return "{}-{}_{}_{}_{}_{}_{}_{}_{}_{}_{}".format(
+        return "{}-{}_{}_{}_{}_{}_{}_{}_{}_{}_{}_{}".format(
                 self.cfg_dict["TARGET"],
                 self.cfg_dict["LOG_BATCH"],
                 self.cfg_dict["LOG_BLOCK_IN"],
@@ -90,6 +91,7 @@ class PkgConfig(object):
                 self.cfg_dict["LOG_INP_WIDTH"],
                 self.cfg_dict["LOG_WGT_WIDTH"],
                 self.cfg_dict["LOG_OUT_WIDTH"],
+                self.cfg_dict["LOG_BUS_WIDTH"],
                 self.cfg_dict["LOG_UOP_BUFF_SIZE"],
                 self.cfg_dict["LOG_INP_BUFF_SIZE"],
                 self.cfg_dict["LOG_WGT_BUFF_SIZE"],
