@@ -16,7 +16,7 @@ from .topi_integration import TaskExtractEnv
 logger = logging.getLogger('autotvm')
 
 
-def extract_from_graph(graph, shape, dtype, target, symbols, target_host=None):
+def extract_from_graph(graph, shape, dtype, target, symbols, params, target_host=None):
     """ Extract tuning tasks from a nnvm graph.
 
     This function collects tuning tasks by building the graph and trace all the calls to topi.
@@ -33,6 +33,8 @@ def extract_from_graph(graph, shape, dtype, target, symbols, target_host=None):
         The compilation target
     symbols : Array of nnvm.symbol
         Array of nnvm symbols want to be tuned
+    params : dict of str to NDArray
+        The parameter dictionary.
     target_host: tvm.target.Target
         The host compilation target
 
@@ -66,7 +68,8 @@ def extract_from_graph(graph, shape, dtype, target, symbols, target_host=None):
         # run compiler to collect all TOPI calls during compilation
         nnvm.compiler.engine.clear_cache()
         with ApplyHistoryBest([]):
-            nnvm.compiler.build(graph, target=target, shape=shape, dtype=dtype)
+            nnvm.compiler.build(graph, target=target, shape=shape, dtype=dtype,
+                                target_host=target_host, params=params)
         nnvm.compiler.engine.clear_cache()
 
         logger.disabled = old_state
@@ -80,7 +83,7 @@ def extract_from_graph(graph, shape, dtype, target, symbols, target_host=None):
                          template_key='direct')
             tasks.append(tsk)
         except topi.InvalidShapeError:
-            print("shape error")
+            print("[Warning] invalid shape")
 
     return tasks
 

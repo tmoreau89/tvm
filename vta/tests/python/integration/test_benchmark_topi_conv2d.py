@@ -47,7 +47,7 @@ def run_cpu_conv2d(env, remote, wl, target):
 
     with target:
         res_conv = topi.nn.conv2d(
-            data, kernel, (wl.hstride, wl.wstride), (wl.hpad, wl.wpad), "NCHW", "int32")
+            data, kernel, (wl.hstride, wl.wstride), (wl.hpad, wl.wpad), (1, 1), "NCHW", "int32")
         res = topi.right_shift(res_conv, 8)
         res = my_clip(res, 0, 127)
         res = topi.cast(res, "int8")
@@ -202,7 +202,7 @@ def run_vta_conv2d(env, remote, wl, target, check_correctness=True, print_ir=Fal
 
     with target:
         res_conv = topi.nn.conv2d(
-            data, kernel, (wl.hstride, wl.wstride), (wl.hpad, wl.wpad),
+            data, kernel, (wl.hstride, wl.wstride), (wl.hpad, wl.wpad), (1, 1),
             "NCHW%dn%dc" % (env.BATCH, env.BLOCK_IN), 'int32')
         res = topi.right_shift(res_conv, 8)
         res = topi.add(res, bias)

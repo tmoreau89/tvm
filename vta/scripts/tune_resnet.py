@@ -89,8 +89,9 @@ def extract_tasks(sym, params, target, target_host):
     sym = vta.graph.pack(sym, shape_dict, env.BATCH, env.BLOCK_OUT)
 
     with vta.build_config():
-        tasks = autotvm.task.extract_from_graph(sym, target=target, target_host=target_host,
-                                                shape=shape_dict, dtype=dtype_dict, symbols=(nnvm.sym.conv2d,))
+        tasks = autotvm.task.extract_from_graph(sym, shape=shape_dict, dtype=dtype_dict, target=target,
+                                                params=params, symbols=(nnvm.sym.conv2d,), target_host=target_host,
+                                                )
     return tasks
 
 
@@ -169,7 +170,7 @@ if __name__ == '__main__':
 
         'measure_option':  autotvm.measure_option(
                 builder=autotvm.LocalBuilder(build_func=vta.vta_autotvm_build_func),
-                runner=autotvm.RPCRunner(env.TARGET, 'fleet', 9190,
+                runner=autotvm.RPCRunner(env.TARGET, '10.77.1.109', 9190,
                     number=4, repeat=3, timeout=60,
                     check_correctness=True))
     }
@@ -202,7 +203,7 @@ if __name__ == '__main__':
 
         # upload module to device
         print("Upload...")
-        remote = autotvm.measure.request_remote(env.TARGET, 'fleet', 9190, timeout=10000)
+        remote = autotvm.measure.request_remote(env.TARGET, '10.77.1.109', 9190, timeout=10000)
         remote.upload(tmp.relpath(filename))
         rlib = remote.load_module(filename)
 

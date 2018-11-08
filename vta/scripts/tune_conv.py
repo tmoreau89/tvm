@@ -20,7 +20,7 @@ def my_clip(x, a_min, a_max):
     x = tvm.compute(x.shape, lambda *i: tvm.max(x(*i), const_min), name="clipB")
     return x
 
-def conv2d(N, CI, H, W, CO, KH, KW, strides, padding, in_dtype, out_dtype):
+def conv2d(N, CI, H, W, CO, KH, KW, strides, padding, dilation, in_dtype, out_dtype):
     data_shape = (N//env.BATCH, CI//env.BLOCK_IN, H, W, env.BATCH, env.BLOCK_IN)
     kernel_shape = (CO//env.BLOCK_OUT, CI//env.BLOCK_IN, KH, KW, env.BLOCK_OUT, env.BLOCK_IN)
     bias_shape = (N//env.BATCH, CO//env.BLOCK_OUT, 1, 1, env.BATCH, env.BLOCK_OUT)
@@ -33,7 +33,7 @@ def conv2d(N, CI, H, W, CO, KH, KW, strides, padding, in_dtype, out_dtype):
     kernel = tvm.placeholder(kernel_shape, name="kernel", dtype=env.wgt_dtype)
 
     with tvm.target.vta():
-        res = topi.nn.conv2d(data, kernel, padding=padding, strides=strides,
+        res = topi.nn.conv2d(data, kernel, padding=padding, strides=strides, dilation=dilation,
                              layout='NCHW%dn%dc' % (env.BATCH, env.BLOCK_IN), out_dtype='int32')
         res = topi.add(res, bias)
         res = topi.right_shift(res, 8)
@@ -46,13 +46,13 @@ def conv2d(N, CI, H, W, CO, KH, KW, strides, padding, in_dtype, out_dtype):
         s = tvm.create_schedule([res.op])
 
 
-    return s, [data, kernel, bias, res] 
+    return s, [data, kernel, bias, res]
 
 if __name__ == '__main__':
-    N, CI, H, W, CO, KH, KW, strides, padding, in_dtype, out_dtype = \
-        1, 64, 56, 56, 64, 3, 3, (1, 1), (1, 1), 'int8', 'int32'
+    N, CI, H, W, CO, KH, KW, strides, padding, dilation, in_dtype, out_dtype = \
+        1, 64, 56, 56, 64, 3, 3, (1, 1), (1, 1), (1, 1), 'int8', 'int32'
 
-    task = autotvm.task.create(conv2d, args=(N, CI, H, W, CO, KH, KW, strides, padding, in_dtype, out_dtype),
+    task = autotvm.task.create(conv2d, args=(N, CI, H, W, CO, KH, KW, strides, padding, dilation, in_dtype, out_dtype),
             target=tvm.target.vta(env.MODEL), target_host=env.target_host, template_key='direct')
     print(task.config_space)
 
@@ -62,7 +62,7 @@ if __name__ == '__main__':
 
     measure_option = autotvm.measure_option(
             builder=autotvm.LocalBuilder(build_func=vta.vta_autotvm_build_func),
-            runner=autotvm.RPCRunner(env.TARGET, 'fleet', 9190, number=4, repeat=3, timeout=30,
+            runner=autotvm.RPCRunner(env.TARGET, '10.77.1.109', 9190, number=4, repeat=3, timeout=30,
                                      check_correctness=True))
 
     tuner = autotvm.tuner.RandomTuner(task)

@@ -190,7 +190,7 @@ def schedule_packed_conv2d(cfg, outs,
     ewise_inputs = []
     ewise_ops = []
     conv2d_res = []
-    assert output.op.input_tensors[0].dtype == "int32"
+    assert "int" in output.op.input_tensors[0].dtype
 
     def _traverse(op):
         if topi.tag.is_broadcast(op.tag):
