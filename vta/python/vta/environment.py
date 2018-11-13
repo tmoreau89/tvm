@@ -152,7 +152,7 @@ class Environment(object):
         self._dev_ctx = None
         self._last_env = None
         # derive bitstream name
-        self.BITSTREAM = "{}/{}/{}x{}x{}_a{}w{}o{}_{}_{}_{}_{}_{}_{}MHz_{}ns_gii{}".format(
+        self.BITSTREAM = "{}/{}_{}x{}x{}_a{}w{}o{}s{}_{}_{}_{}_{}_{}_{}MHz_{}ns_gii{}".format(
             self.HW_VER.replace('.', '_'),
             self.TARGET,
             self.BATCH,
@@ -161,6 +161,7 @@ class Environment(object):
             self.INP_WIDTH,
             self.WGT_WIDTH,
             self.OUT_WIDTH,
+            self.ACC_WIDTH,
             self.LOG_BUS_WIDTH,
             self.LOG_UOP_BUFF_SIZE,
             self.LOG_INP_BUFF_SIZE,
