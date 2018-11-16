@@ -2,6 +2,7 @@
 from __future__ import absolute_import as _abs
 
 import tvm
+from tvm import rpc
 from . import ir_pass
 from . import ptr_alias
 from .environment import get_env
@@ -124,15 +125,29 @@ def vta_autotvm_build_func(measure_input, tmp_dir, **kwargs):
                 raise InstantiationError(config.errors)
 
             func = build(s, args, target_host=task.target_host)
-            func2 = build(s, args)
+            func_sim = build(s, args)
 
         arg_info =  tuple((get_const_tuple(x.shape), x.dtype) for x in args)
         func.export_library(filename)
 
-        # check by local simulator
-        ctx = tvm.context(str(target))
-        args = [tvm.nd.empty(x[0], dtype=x[1], ctx=ctx) for x in arg_info]
-        func2(*args)
+        # When targeting VTA test the schedule on simulator first
+        if measure_input.target.device_name == 'vta':
+            from vta import reconfig_runtime
+            # Note: if you're not running the RPC locally, you cannot benefit
+            # from rumtime recompilation...
+            local_rpc_port = int(os.environ.get("VTA_LOCAL_SIM_RPC_PORT", "0"))
+            if local_rpc_port:
+                remote = rpc.connect("localhost", local_rpc_port)
+                reconfig_runtime(remote)
+            else:
+                remote = rpc.LocalSession()
+            obj_path = os.path.join(tmp_dir, "tmp_func_%0x.tar" % getrandbits(64))
+            func_sim.export_library(obj_path)
+            remote.upload(obj_path)
+            f = remote.load_module(os.path.split(obj_path)[1])
+            ctx = remote.context(str(measure_input.target), 0)
+            args = [tvm.nd.empty(x[0], dtype=x[1], ctx=ctx) for x in arg_info]
+            f(*args)
 
     except Exception as e:  # pylint: disable=broad-except
         return BuildResult(None, None, e, time.time() - tic)

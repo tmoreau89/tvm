@@ -33,10 +33,10 @@ def pad(data, pad_before, pad_after=None, pad_value=0.0, name="PadInput"):
     n = len(data.shape)
     pad_after = pad_after if pad_after else pad_before
     if len(pad_before) != n:
-        raise ValueError("Input dimension and pad_before dismatch : %d vs %d" % (
+        raise ValueError("Input dimension and pad_before mismatch : %d vs %d" % (
             n, len(pad_before)))
     if len(pad_after) != n:
-        raise ValueError("Input dimension and pad_after dismatch : %d vs %d" % (
+        raise ValueError("Input dimension and pad_after mismatch : %d vs %d" % (
             n, len(pad_before)))
     out_shape = tuple(
         tvm.ir_pass.Simplify(

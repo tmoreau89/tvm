@@ -1,115 +1,38 @@
-import logging
-from collections import namedtuple
+"""Namespace for supporting group_conv2d of nnvm."""
 
 import tvm
+from tvm import autotvm
 import topi
-from topi.util import get_const_int, get_const_tuple
-from tvm.contrib.util import get_lower_ir
+from topi.util import get_const_tuple
+
+import numpy as np
 
 from ..environment import get_env
 
-Workload = namedtuple("GroupConv2DWorkload",
-                      ('batch', 'height', 'width', 'in_filter', 'out_filter', 'groups',
-                       'hkernel', 'wkernel', 'hpad', 'wpad', 'hstride', 'wstride'))
-
-Schedule = namedtuple("GroupConv2DSchedule",
-                      ('b_factor', 'oc_factor', 'ic_factor', 'h_factor', 'w_factor',
-                       'oc_nthread', 'h_nthread', 'debug_sync'))
-
-workloads = [
-    Workload(1, 112, 112,  32,  32,  2, 3, 3, 1, 1, 1, 1),
-    Workload(1, 112, 112,  64,  64,  4, 3, 3, 1, 1, 2, 2),
-    Workload(1,  56,  56, 128, 128,  8, 3, 3, 1, 1, 1, 1),
-    Workload(1,  56,  56, 128, 128,  8, 3, 3, 1, 1, 2, 2),
-    Workload(1,  28,  28, 256, 256, 16, 3, 3, 1, 1, 1, 1),
-    Workload(1,  28,  28, 256, 256, 16, 3, 3, 1, 1, 2, 2),
-    Workload(1,  14,  14, 512, 512, 32, 3, 3, 1, 1, 1, 1),
-    Workload(1,  14,  14, 512, 512, 32, 3, 3, 1, 1, 2, 2),
-    Workload(1,  7,  7, 1024, 1024, 64, 3, 3, 1, 1, 1, 1),
-]
-
-schedules = [
-    Schedule(1, 1, 1, 28, 56, 1, 1, False),
-    Schedule(1, 1, 1, 14, 28, 1, 1, False),
-    Schedule(1, 1, 1, 28, 56, 1, 1, False),
-    Schedule(1, 1, 1, 14, 28, 1, 1, False),
-    Schedule(1, 1, 1, 28, 28, 1, 1, False),
-    Schedule(1, 1, 1, 14, 14, 1, 1, False),
-    Schedule(1, 1, 1, 14, 14, 1, 1, False),
-    Schedule(1, 1, 1, 7, 7, 1, 1, False),
-    Schedule(1, 1, 1, 7, 7, 1, 1, False),
-]
-
-injected_schedule = None
-
-# load schedule
-
-def find_schedules(layer, vt_only=False, best_only=False):
-    global injected_schedule
-    if injected_schedule:
-        return [injected_schedule]
-    for i, wkl in enumerate(workloads):
-        if str(wkl) == str(layer):
-            return [schedules[i]]
-    raise RuntimeError("No schedule for " + str(layer))
-
-def inject_schedule(sch):
-    global injected_schedule
-    injected_schedule = sch
-
-def _get_workload(data, pad_data, kernel, output):
-    """ Get the workload structure.
-    """
-    o_shape = get_const_tuple(output.shape)
-    d_shape = get_const_tuple(data.shape)
-    k_shape = get_const_tuple(kernel.shape)
-    o_b, o_c, o_h, o_w, ob_blk, o_blk = o_shape
-    i_b, i_c, i_h, i_w, ib_blk, i_blk = d_shape
-    k_o, k_i, k_h, k_w, ko_blk, ki_blk = k_shape
-    # For now we need to assume that input channel blocking is the same
-    # as the output channel blocking
-    assert o_blk == i_blk
-    assert ob_blk == ib_blk
-    # Make sure that dimensions match
-    assert o_b == i_b
-    assert o_blk == ko_blk
-    assert i_blk == ki_blk
-    assert k_o == o_c
-    groups = i_c // k_i
-    assert i_c % groups == 0
-    assert o_c % groups == 0
-
-    # Scale the channel size
-    i_c *= i_blk
-    o_c *= o_blk
-    if pad_data is not None:
-        p_shape = topi.util.get_const_tuple(pad_data.shape)
-        h_pad = (p_shape[2] - d_shape[2]) // 2
-        w_pad = (p_shape[3] - d_shape[3]) // 2
-    else:
-        h_pad, w_pad = 0, 0
-    h_str = (i_h + h_pad*2 - k_h) // (o_h - 1)
-    w_str = (i_w + w_pad*2 - k_w) // (o_w - 1)
-    return Workload(i_b, i_h, i_w, i_c, o_c, groups, k_h, k_w, h_pad, w_pad, h_str, w_str)
-
-
-def packed_group_conv2d(data,
+@autotvm.register_topi_compute(topi.nn.group_conv2d_nchw, 'vta', 'direct')
+def packed_group_conv2d(cfg,
+                        data,
                         kernel,
-                        padding,
                         strides,
+                        padding,
+                        dilation,
                         group,
-                        out_dtype="int32"):
-    """ Packed conv2d function."""
+                        out_dtype):
+    """ Packed group conv2d nchw function."""
+    assert dilation == (1, 1)
+
+    print(padding)
+    print(data.shape)
 
     if padding[0]:
         pad_data = topi.nn.pad(data, [0, 0, padding[0], padding[1], 0, 0], name="pad_data")
     else:
         pad_data = data
-
     assert len(data.shape) == 6
     assert len(kernel.shape) == 6
     assert data.dtype == "int8", data.dtype
     assert kernel.dtype == "int8", kernel.dtype
+    assert out_dtype == "int32", out_dtype
 
     N, CI, IH, IW, B_BATCH, B_CI = get_const_tuple(data.shape)
     CO, CI_G, KH, KW, B_CO, B_CI = get_const_tuple(kernel.shape)
@@ -137,10 +60,14 @@ def packed_group_conv2d(data,
             kernel[co, ci_o, kh, kw, b_co, ci_i].astype(out_dtype),
             axis=[ci_o, kh, kw, ci_i]),
         name="res", tag="packed_group_conv2d")
+
+    cfg.add_flop(2 * np.prod(topi.util.get_const_tuple(oshape)) *
+                 KH * KW * CI * B_CI)
     return out
 
 
-def schedule_packed_group_conv2d(outs):
+@autotvm.register_topi_schedule(topi.generic.schedule_group_conv2d_nchw, 'vta', 'direct')
+def schedule_packed_group_conv2d(cfg, outs):
     """ Schedule the packed conv2d.
     """
     assert len(outs) == 1
@@ -167,6 +94,19 @@ def schedule_packed_group_conv2d(outs):
     _traverse(output.op)
     assert len(conv2d_res) == 1
     conv2d_stage = conv2d_res[0].output(0)
+    s = tvm.create_schedule(output.op)
+
+    ##### space definition begin #####
+    b, co, h, w, bi, ci = s[conv2d_stage].op.axis
+    ci, kh, kw, bci = s[conv2d_stage].op.reduce_axis
+    cfg.define_split('tile_b', b, num_outputs=2)
+    cfg.define_split('tile_h', h, num_outputs=2)
+    cfg.define_split('tile_w', w, num_outputs=2)
+    cfg.define_split('tile_ci', ci, num_outputs=2)
+    cfg.define_split('tile_co', co, num_outputs=2)
+    cfg.define_knob('oc_nthread', [1, 2])
+    cfg.define_knob('h_nthread', [1, 2])
+    ###### space definition end ######
 
     data, kernel = conv2d_stage.op.input_tensors
     if isinstance(data.op, tvm.tensor.ComputeOp) and "pad" in data.op.tag:
@@ -175,17 +115,14 @@ def schedule_packed_group_conv2d(outs):
         data = temp
     else:
         pad_data = None
-    wrkld = _get_workload(data, pad_data, kernel, output)
-    plan = find_schedules(wrkld, vt_only=True, best_only=True)[0]
-    env = get_env()
 
-    load_inp = load_wgt = load_out = store_out = env.dma_copy
+    env = get_env()
+    load_inp = load_wgt = load_acc = store_out = env.dma_copy
     alu = env.alu
     gemm = env.gemm
 
-    # schedule1
+    # schedule
     oshape = topi.util.get_const_tuple(output.shape)
-    s = tvm.create_schedule(output.op)
 
     # setup pad
     if pad_data is not None:
@@ -195,26 +132,23 @@ def schedule_packed_group_conv2d(outs):
         cdata = s.cache_read(data, env.inp_scope, [conv2d_stage])
     ckernel = s.cache_read(kernel, env.wgt_scope, [conv2d_stage])
     s[conv2d_stage].set_scope(env.acc_scope)
+
     # cache read input
     cache_read_ewise = []
-
     for consumer, tensor in ewise_inputs:
         cache_read_ewise.append(
             s.cache_read(tensor, env.acc_scope, [consumer]))
+
     # set ewise scope
     for op in ewise_ops:
         s[op].set_scope(env.acc_scope)
         s[op].pragma(s[op].op.axis[0], alu)
 
     # tile
-    oc_factor = (plan.oc_factor if plan.oc_factor else 1)
-    h_factor = (plan.h_factor if plan.h_factor else 1)
-    w_factor = (plan.w_factor if plan.w_factor else 1)
-
     x_bo, x_co, x_i, x_j, x_bi, x_ci = s[output].op.axis
-    x_co0, x_co1 = s[output].split(x_co, factor=oc_factor)
-    x_i0, x_i1 = s[output].split(x_i, factor=h_factor)
-    x_j0, x_j1 = s[output].split(x_j, factor=w_factor)
+    x_co0, x_co1 = cfg['tile_co'].apply(s, output, x_co)
+    x_i0, x_i1 = cfg['tile_h'].apply(s, output, x_i)
+    x_j0, x_j1 = cfg['tile_w'].apply(s, output, x_j)
     s[output].reorder(x_bo, x_i0, x_co0, x_j0, x_co1, x_i1, x_j1, x_bi, x_ci)
     store_pt = x_j0
 
@@ -225,17 +159,17 @@ def schedule_packed_group_conv2d(outs):
 
     for tensor in cache_read_ewise:
         s[tensor].compute_at(s[output], store_pt)
-        s[tensor].pragma(s[tensor].op.axis[0], load_out)
+        s[tensor].pragma(s[tensor].op.axis[0], load_acc)
 
     # virtual threading along output channel axes
-    if plan.oc_nthread > 1:
-        _, v_t = s[output].split(x_co0, factor=plan.oc_nthread)
+    if cfg['oc_nthread'].val > 1:
+        _, v_t = s[output].split(x_co0, factor=cfg['oc_nthread'].val)
         s[output].reorder(v_t, x_bo)
         s[output].bind(v_t, tvm.thread_axis("cthread"))
 
     # virtual threading along spatial rows
-    if plan.h_nthread > 1:
-        _, v_t = s[output].split(x_i0, factor=plan.h_nthread)
+    if cfg['h_nthread'].val > 1:
+        _, v_t = s[output].split(x_i0, factor=cfg['h_nthread'].val)
         s[output].reorder(v_t, x_bo)
         s[output].bind(v_t, tvm.thread_axis("cthread"))
 
@@ -243,10 +177,9 @@ def schedule_packed_group_conv2d(outs):
     k_o, d_i, d_j, k_i = s[conv2d_stage].op.reduce_axis
     s[conv2d_stage].reorder(x_bo, k_o, x_j, d_j, d_i, x_co, x_i, x_bi, x_ci, k_i)
 
-    if plan.ic_factor:
-        k_o, _ = s[conv2d_stage].split(k_o, factor=plan.ic_factor)
-        s[cdata].compute_at(s[conv2d_stage], k_o)
-        s[ckernel].compute_at(s[conv2d_stage], k_o)
+    k_o, _ = cfg['tile_ci'].apply(s, conv2d_stage, k_o)
+    s[cdata].compute_at(s[conv2d_stage], k_o)
+    s[ckernel].compute_at(s[conv2d_stage], k_o)
 
     # Use VTA instructions
     s[cdata].pragma(s[cdata].op.axis[0], load_inp)

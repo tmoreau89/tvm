@@ -74,7 +74,7 @@ def compute_conv2d(attrs, inputs, out):
 
             return topi.nn.conv2d(inputs[0], inputs[1], strides, padding, dilation, layout, out_dtype)
         else:
-            return packed_group_conv2d(inputs[0], inputs[1], padding, strides, groups, out_dtype)
+            return topi.nn.group_conv2d_nchw(inputs[0], inputs[1], strides, padding, dilation, groups, out_dtype)
 
     with tvm.target.arm_cpu(tvm.target.current_target().model):
         return _nn.compute_conv2d(attrs, inputs, out)
@@ -93,7 +93,7 @@ def schedule_conv2d(attrs, outs, target):
             if groups == 1:
                 return topi.generic.schedule_conv2d_nchw(outs)
             else:
-                return schedule_packed_group_conv2d(outs)
+                return topi.generic.schedule_group_conv2d_nchw(outs)
         elif str(target).startswith("llvm"):
             return tvm.create_schedule([x.op for x in outs])
         else:

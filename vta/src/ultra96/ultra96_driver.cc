@@ -10,20 +10,6 @@
 
 #define RESET_IOCTL _IOWR('X', 101, unsigned long)
 
-void _xlnk_reset() {
-    /* This performs the correct ioctl but probably isn't
-       particularly stable as a behaviour */
-    int xlnkfd = open("/dev/xlnk", O_RDWR | O_CLOEXEC);
-    if (xlnkfd < 0) {
-        printf("Reset failed - could not open device: %d\n", xlnkfd);
-        return;
-    }
-    if (ioctl(xlnkfd, RESET_IOCTL, 0) < 0) {
-        printf("Reset failed - IOCTL failed: %d\n", errno);
-    }
-    close(xlnkfd);
-}
-
 void* VTAMemAlloc(size_t size, int cached) {
   void* ret_val = cma_alloc(size, cached);
   return ret_val;
@@ -90,8 +76,6 @@ class VTADevice {
     VTAUnmapRegister(vta_load_handle_, VTA_RANGE);
     VTAUnmapRegister(vta_compute_handle_, VTA_RANGE);
     VTAUnmapRegister(vta_store_handle_, VTA_RANGE);
-    // Reset xlnk drivers to clean up leaks
-    _xlnk_reset();
   }
 
   int Run(vta_phy_addr_t insn_phy_addr,

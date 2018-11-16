@@ -14,7 +14,6 @@ from shutil import copyfile
 from tvm._ffi.base import c_str
 from tvm import rpc
 from tvm.contrib import cc
-from pynq import Bitstream
 
 from ..environment import get_env
 from ..pkg_config import PkgConfig
@@ -52,7 +51,10 @@ def server_start():
 
     @tvm.register_func("tvm.contrib.vta.init", override=True)
     def program_fpga(file_name):
+        from pynq import Bitstream, xlnk
         path = tvm.get_global_func("tvm.rpc.server.workpath")(file_name)
+        # Reset driver stack
+        xlnk.Xlnk().xlnk_reset()
         bitstream = Bitstream(path)
         bitstream.download()
         logging.info("Program FPGA with %s", file_name)
@@ -72,6 +74,7 @@ def server_start():
         cfg_json : str
             JSON string used for configurations.
         """
+        # This ensures the tmp directory does not fill out too much
         if runtime_dll:
             raise RuntimeError("Can only reconfig in the beginning of session...")
         env = get_env()
