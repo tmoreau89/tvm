@@ -149,5 +149,5 @@ def schedule_conv2d_transpose(attrs, outs, target):
             raise RuntimeError("not support target %s" % target)
 
     with tvm.target.arm_cpu(tvm.target.current_target().model):
-        return _nn.schedule_conv2d_transpose(attrs, outs, target)
+        return _nn.schedule_conv2d_transpose(attrs, outs, tvm.target.current_target())
 
