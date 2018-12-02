@@ -2,7 +2,10 @@
 """x86 specific declaration and schedules."""
 from __future__ import absolute_import as _abs
 
-from .conv2d import schedule_conv2d, schedule_conv2d_nhwc
+#from .conv2d import schedule_conv2d, schedule_conv2d_nhwc
+# TODO(lmzheng): don't know why the schedule call of arm_cpu will jump
+# to the compute call of x86 cpu. Some registerations are messed up.
+# Disable x86 registers temporarily for vta.
 from .binarize_pack import schedule_binarize_pack
 from .binary_dense import schedule_binary_dense
 from .nn import *
