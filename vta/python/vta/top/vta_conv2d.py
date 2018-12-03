@@ -194,6 +194,7 @@ def schedule_packed_conv2d(cfg, outs,
                            skip_store_out=False, skip_alu=False, skip_gemm=False):
     assert len(outs) == 1
     output = outs[0]
+    const_ops = []
     ewise_inputs = []
     ewise_ops = []
     conv2d_res = []
@@ -202,7 +203,10 @@ def schedule_packed_conv2d(cfg, outs,
     def _traverse(op):
         if topi.tag.is_broadcast(op.tag):
             if not op.same_as(output.op):
-                ewise_ops.append(op)
+                if len(op.axis) == 0:
+                    const_ops.append(op)
+                else:
+                    ewise_ops.append(op)
             for tensor in op.input_tensors:
                 if isinstance(tensor.op, tvm.tensor.PlaceholderOp):
                     ewise_inputs.append((op, tensor))
@@ -268,6 +272,9 @@ def schedule_packed_conv2d(cfg, outs,
     for op in ewise_ops:
         s[op].set_scope(env.acc_scope)
         s[op].pragma(s[op].op.axis[0], alu)
+
+    for op in const_ops:
+        s[op].compute_inline()
 
     # tile
     x_bo, x_co, x_i, x_j, x_bi, x_ci = s[output].op.axis

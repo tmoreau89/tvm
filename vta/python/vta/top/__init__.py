@@ -2,3 +2,5 @@
 
 from . import vta_conv2d
 from . import op
+from . import relay_op
+from . import bitpack
