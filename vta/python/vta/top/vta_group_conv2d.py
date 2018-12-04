@@ -1,4 +1,4 @@
-"""Namespace for supporting group_conv2d of nnvm."""
+"""Namespace for supporting group_conv2d of nnvm + ewise variant of nnvm."""
 
 import tvm
 from tvm import autotvm

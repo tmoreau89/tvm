@@ -125,9 +125,9 @@ def compute_conv2d_transpose(attrs, inputs, out):
 
     assert dilation == (1, 1), "not support dilate now"
     if is_packed_layout(layout):
-        return packed_conv2d_transpose(inputs[0], inputs[1],
-                                       padding, strides,
-                                       out_dtype=out_dtype)
+        return topi.nn.conv2d_transpose_nchw(inputs[0], inputs[1],
+                                             strides, padding,
+                                             out_dtype)
 
     with tvm.target.arm_cpu(tvm.target.current_target().model):
         return _nn.compute_conv2d_transpose(attrs, inputs, out)
@@ -142,7 +142,7 @@ def schedule_conv2d_transpose(attrs, outs, target):
     if is_packed_layout(layout):
         target = tvm.target.create(target)
         if target.device_name == "vta":
-            return schedule_packed_conv2d_transpose(outs)
+            return topi.generic.schedule_conv2d_transpose_nchw(outs)
         elif str(target).startswith("llvm"):
             return tvm.create_schedule([x.op for x in outs])
         else:
