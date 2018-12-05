@@ -60,6 +60,24 @@ namespace relay {
   }
 
 /*!
+ * \brief Get reference counter of each internal ExprNode in body.
+ * \param body The body expression.
+ * \return The reference count mapping.
+ */
+std::unordered_map<const Node*, size_t>
+inline GetExprRefCount(const Expr& body) {
+  class ExprRefCounter : private ExprVisitor {
+   public:
+    std::unordered_map<const Node*, size_t>
+    Get(const Expr& body) {
+      this->VisitExpr(body);
+      return std::move(this->visit_counter_);
+    }
+  };
+  return ExprRefCounter().Get(body);
+}
+
+/*!
  * \brief Try to match lhs and rhs via broadcasting rule, such that:
  *
  * rhs matches the dimension of lhs specified by lhs_axes
@@ -308,6 +326,24 @@ inline Expr OnesLike(Expr e) {
   static const Op& op = Op::Get("ones_like");
   return CallNode::make(op, {e});
 }
+
+inline Expr Power(Expr lhs, Expr rhs) {
+  static const Op& op = Op::Get("power");
+  return CallNode::make(op, {lhs, rhs}, Attrs(), {});
+}
+
+
+inline Expr RightShift(Expr x, Expr nbit) {
+  static const Op& op = Op::Get("right_shift");
+  return CallNode::make(op, {x, nbit}, Attrs(), {});
+}
+
+
+inline Expr LeftShift(Expr x, Expr nbit) {
+  static const Op& op = Op::Get("left_shift");
+  return CallNode::make(op, {x, nbit}, Attrs(), {});
+}
+
 
 inline Expr Power(Expr lhs, Expr rhs) {
   static const Op& op = Op::Get("power");

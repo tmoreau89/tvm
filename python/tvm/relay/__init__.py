@@ -10,7 +10,6 @@ from . import module
 from . import adt
 from . import ir_pass
 from .build_module import build, build_config, create_executor, optimize
-from . import prelude
 from . import parser
 from . import debug
 from . import param_dict

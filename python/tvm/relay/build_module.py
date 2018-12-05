@@ -20,9 +20,7 @@ OPT_PASS_LEVEL = {
     "FoldConstant": 2,
     "CombineParallelConv2D": 3,
     "FoldScaleAxis": 3,
-    "AlterOpLayout": 3,
-    "CanonicalizeOps": 3,
-    "EliminateCommonSubexpr": 3,
+    "AlterOpLayout": 4,
 }
 
 
