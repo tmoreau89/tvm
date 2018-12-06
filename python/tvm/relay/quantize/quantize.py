@@ -9,7 +9,8 @@ from .. import ir_pass as _ir_pass
 from .. import build_module as _build
 from .. import op as _op
 from ... import make as _make
-from ..base import NodeBase, register_relay_node
+from ..base import register_relay_node
+from ..._ffi.function import register_func, get_global_func
 
 
 class QAnnotateKind(object):
@@ -150,6 +151,27 @@ CONV_COUNTER = 0
 def _conv_counter():
     """Get the global counter for conv2d."""
     return CONV_COUNTER
+
+SQ_CACHE_MAP = {}
+
+
+@register_func("relay.quantize.attach_simulated_quantize")
+def attach_simulated_quantize(data, kind):
+    global SQ_CACHE_MAP
+    key = data
+    if data in SQ_CACHE_MAP:
+        return SQ_CACHE_MAP[data]
+    if len(SQ_CACHE_MAP) == 0:
+        f = get_global_func("relay._quantize.make_annotate_op")
+        data = f(data, "quantize_start")
+    dom_scale = _expr.var("dom_scale")
+    bit = _expr.var("bit")
+    clip_min = _expr.var("clip_min")
+    clip_max = _expr.var("clip_max")
+    ret = simulated_quantize(data, dom_scale, bit, clip_min, clip_max,
+                             True, "round", kind)
+    SQ_CACHE_MAP[key] = ret
+    return ret
 
 
 def _set_conv_counter(n):

@@ -85,6 +85,17 @@ TVM_REGISTER_API("relay._quantize.simulated_quantize")
   });
 
 
+Expr MakeAnnotateOp(Expr data, std::string info) {
+  auto attrs = make_node<AnnotateAttrs>();
+  attrs->info = info;
+  static const Op& op = Op::Get("annotate");
+  return CallNode::make(op, {data}, Attrs(attrs), {});
+}
+
+TVM_REGISTER_API("relay._quantize.make_annotate_op")
+.set_body_typed<Expr(Expr, std::string)>(MakeAnnotateOp);
+
+
 // =============
 // annotate pass
 
