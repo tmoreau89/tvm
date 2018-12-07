@@ -481,7 +481,7 @@ def run_through_rpc(measure_input, build_result,
         # check correctness of output
         if ref_output:
             for expected, real in zip(ref_output, args):
-                if not np.allclose(expected, real.asnumpy(), rtol=1e-4):
+                if not np.allclose(expected, real.asnumpy(), rtol=1e-2):
                     logger.warning("Wrong Answer!")
                     errno = MeasureErrorNo.WRONG_ANSWER
     except TVMError as exc:
