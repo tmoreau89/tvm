@@ -64,6 +64,7 @@ bool Conv2DRel(const Array<Type>& types,
     channels = param->channels;
     dilated_ksize_y = 1 + (param->kernel_size[0] - 1) * param->dilation[0];
     dilated_ksize_x = 1 + (param->kernel_size[1] - 1) * param->dilation[1];
+
     // assign result to reporter
     reporter->Assign(types[1], TensorTypeNode::make(wshape, data->dtype));
   } else {

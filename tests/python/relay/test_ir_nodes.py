@@ -209,6 +209,9 @@ def test_tuple_get_item():
     str(get)
     check_json_roundtrip(get)
 
+def test_op():
+    add = op.op.get("add")
+    check_json_roundtrip(add)
 
 def test_op():
     add = op.op.get("add")
