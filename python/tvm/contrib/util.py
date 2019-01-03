@@ -143,7 +143,6 @@ def which(exec_name):
             return full_path
     return None
 
-
 def get_lower_ir(s):
     """Get lower ir code of a schedule.
     This is useful for debug, since you don't have to find all inputs/outputs

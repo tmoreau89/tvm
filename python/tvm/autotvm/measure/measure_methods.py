@@ -210,7 +210,7 @@ class RPCRunner(Runner):
 
             def _run_func():
                 """Run tvm function in a thread.
-                Because there is some issues with python multiprocessing and the thread pool in tvm
+                Because there are some issues with python multiprocessing and the thread pool in tvm
                 """
                 func(*tvm_buf)
 
@@ -446,6 +446,7 @@ def run_through_rpc(measure_input, build_result,
     try:
         # upload built module
         remote = request_remote(*remote_args)
+	# When tuning schedule for VTA, re-program FPGA to avoid "stale" state
         if measure_input.target.device_name == 'vta':
             from vta import program_fpga, reconfig_runtime
             program_fpga(remote, None)
@@ -481,7 +482,7 @@ def run_through_rpc(measure_input, build_result,
         # check correctness of output
         if ref_output:
             for expected, real in zip(ref_output, args):
-                if not np.allclose(expected, real.asnumpy(), rtol=1e-2):
+                if not np.allclose(expected, real.asnumpy(), rtol=1e-4):
                     logger.warning("Wrong Answer!")
                     errno = MeasureErrorNo.WRONG_ANSWER
     except TVMError as exc:

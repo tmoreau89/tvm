@@ -551,7 +551,6 @@ inline ValueType OpMap<ValueType>::get(const Expr& expr,
   return map_.get<ValueType>(expr, def_value);
 }
 
-
 /*!
  * \brief Check that an expression is a "primtive operator".
  *
