@@ -473,6 +473,13 @@ def rasp(options=None):
     return arm_cpu('rasp3b', options)
 
 
+def vta(model='unknown', options=None):
+    opts = ["-device=vta", '-keys=cpu', '-model=%s' % model]
+    opts = _merge_opts(opts, options)
+    ret = _api_internal._TargetCreate("ext_dev", *opts)
+    return ret
+
+
 def create(target_str):
     """Get a target given target string.
 

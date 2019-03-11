@@ -39,7 +39,7 @@ RELAY_REGISTER_OP("on_device")
                                ElemwiseArbitraryLayout);
 
 Expr StopFusion(Expr data) {
-  static const Op& op = Op::Get("annotation.stop_fusion");
+  static const Op& op = Op::Get("stop_fusion");
   return CallNode::make(op, {data}, Attrs{}, {});
 }
 
@@ -48,7 +48,7 @@ TVM_REGISTER_API("relay.op.annotation._make.stop_fusion")
     return StopFusion(data);
 });
 
-RELAY_REGISTER_OP("annotation.stop_fusion")
+RELAY_REGISTER_OP("stop_fusion")
 .describe(R"code(Annotate an expression to prevent it being fused with previous expressions.)code"
 TVM_ADD_FILELINE)
 .set_num_inputs(1)
@@ -58,6 +58,40 @@ TVM_ADD_FILELINE)
 .set_attr<TOpPattern>("TOpPattern", kOpaque)
 .set_attr<TOpIsStateful>("TOpIsStateful", false)
 .set_attr<FInferCorrectLayout>("FInferCorrectLayout", ElemwiseArbitraryLayout)
+.set_attr<FTVMCompute>("FTVMCompute",
+                       [](const Attrs& attrs, const Array<Tensor>& inputs,
+                          const Type& out_dtype, const Target& target) -> Array<Tensor> {
+                         return {topi::identity(inputs[0])};
+                       });
+
+RELAY_REGISTER_OP("bitpack_start")
+.describe(R"code(
+Mark the start of bitpacking.
+)code" TVM_ADD_FILELINE)
+.set_num_inputs(1)
+.set_support_level(10)
+.add_type_rel("Identity", IdentityRel)
+.set_attr<TOpPattern>("TOpPattern", kOpaque)
+.set_attr<TOpIsStateful>("TOpIsStateful", false)
+.set_attr<FInferCorrectLayout>("FInferCorrectLayout",
+                               ElemwiseArbitraryLayout)
+.set_attr<FTVMCompute>("FTVMCompute",
+                       [](const Attrs& attrs, const Array<Tensor>& inputs,
+                          const Type& out_dtype, const Target& target) -> Array<Tensor> {
+                         return {topi::identity(inputs[0])};
+                       });
+
+RELAY_REGISTER_OP("bitpack_end")
+.describe(R"code(
+Mark the end of bitpacking.
+)code" TVM_ADD_FILELINE)
+.set_num_inputs(1)
+.set_support_level(10)
+.add_type_rel("Identity", IdentityRel)
+.set_attr<TOpPattern>("TOpPattern", kOpaque)
+.set_attr<TOpIsStateful>("TOpIsStateful", false)
+.set_attr<FInferCorrectLayout>("FInferCorrectLayout",
+                               ElemwiseArbitraryLayout)
 .set_attr<FTVMCompute>("FTVMCompute",
                        [](const Attrs& attrs, const Array<Tensor>& inputs,
                           const Type& out_dtype, const Target& target) -> Array<Tensor> {
