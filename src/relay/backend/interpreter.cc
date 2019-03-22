@@ -10,7 +10,6 @@
 #include <tvm/relay/interpreter.h>
 #include <tvm/relay/pass.h>
 #include <tvm/relay/attrs/debug.h>
-#include <tvm/relay/logging.h>
 #include "compile_engine.h"
 
 namespace tvm {

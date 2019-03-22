@@ -82,24 +82,6 @@ RELAY_REGISTER_UNARY_OP("copy")
 .set_support_level(3)
 .set_attr<FTVMCompute>("FTVMCompute", RELAY_UNARY_COMPUTE(topi::identity));
 
-
-// relay.annotate
-TVM_REGISTER_NODE_TYPE(AnnotateAttrs);
-
-RELAY_REGISTER_OP("annotate")
-.describe(R"code(Copy a tensor with annotation information
-)code" TVM_ADD_FILELINE)
-.set_num_inputs(1)
-.add_argument("data", "Tensor", "The input tensor.")
-.add_type_rel("Identity", IdentityRel)
-.set_attr<TOpPattern>("TOpPattern", kElemWise)
-.set_attr<TOpIsStateful>("TOpIsStateful", false)
-.set_attr<FInferCorrectLayout>("FInferCorrectLayout", ElemwiseArbitraryLayout)
-.set_attrs_type_key("relay.attrs.AnnotateAttrs")
-.set_support_level(10)
-.set_attr<FTVMCompute>("FTVMCompute", RELAY_UNARY_COMPUTE(topi::identity));
-
-
 // relay.clip
 TVM_REGISTER_NODE_TYPE(ClipAttrs);
 
@@ -124,6 +106,7 @@ This function takes a tensor, a minimum value `a_min`, and a maximum value `a_ma
 .set_attr<FInferCorrectLayout>("FInferCorrectLayout", ElemwiseArbitraryLayout)
 .set_attrs_type_key("relay.attrs.ClipAttrs")
 .set_support_level(3);
+
 
 RELAY_REGISTER_UNARY_OP("floor")
 .describe(R"code(Returns the floor of input array, computed element-wise.

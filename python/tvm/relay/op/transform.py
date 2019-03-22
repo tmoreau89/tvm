@@ -616,7 +616,6 @@ def layout_transform(data, src_layout, dst_layout):
     """
     return _make.layout_transform(data, src_layout, dst_layout)
 
-<<<<<<< HEAD
 
 def reverse_reshape(data, newshape):
     """Reshapes the input array where the special values are inferred from
@@ -630,15 +629,10 @@ def reverse_reshape(data, newshape):
 
     - data.shape = (10,5,4), newshape = (-1,0), reshape results in (40,5)
     - data.shape = (10,5,4), newshape = (-1,0), reverse_reshape results in (40,5)
-=======
-def bitpack(data, lanes):
-    """Bitpack the innermost dimension of the tensor.
->>>>>>> Vta relay bitpack (#34)
 
     Parameters
     ----------
     data : relay.Expr
-<<<<<<< HEAD
         The input data to the operator.
 
     newshape : Union[int, Tuple[int], List[int]]
@@ -652,17 +646,3 @@ def bitpack(data, lanes):
     if isinstance(newshape, int):
         newshape = [newshape]
     return _make._contrib_reverse_reshape(data, list(newshape))
-=======
-        The source tensor to be packed.
-
-    lanes : int
-        The lanes to pack by.
-
-    Returns
-    -------
-    ret : relay.Expr
-        The transformed tensor.
-    """
-    return _make.bitpack(data, lanes)
-
->>>>>>> Vta relay bitpack (#34)

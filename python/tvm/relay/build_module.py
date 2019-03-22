@@ -20,7 +20,9 @@ OPT_PASS_LEVEL = {
     "FoldConstant": 2,
     "CombineParallelConv2D": 3,
     "FoldScaleAxis": 3,
-    "AlterOpLayout": 4,
+    "AlterOpLayout": 3,
+    "CanonicalizeOps": 3,
+    "EliminateCommonSubexpr": 3,
 }
 
 
@@ -100,7 +102,7 @@ def build_config(**kwargs):
         Optimization level. See OPT_PASS_LEVEL for level of each pass.
 
     add_pass: set of str
-        Optimization pass to be enabled regardless of optimization level.
+        Optimization pass to be added regardless of optimization level.
 
     disable_pass: set of str
         Optimization passes to be disabled regardless of optimization level.
