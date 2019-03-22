@@ -10,9 +10,10 @@ import os
 import ctypes
 import json
 import tvm
+from shutil import copyfile
+from tvm._ffi.base import c_str
 from tvm import rpc
 from tvm.contrib import cc
-from pynq import Bitstream
 
 from ..environment import get_env
 from ..pkg_config import PkgConfig
@@ -50,7 +51,10 @@ def server_start():
 
     @tvm.register_func("tvm.contrib.vta.init", override=True)
     def program_fpga(file_name):
+        from pynq import Bitstream, xlnk
         path = tvm.get_global_func("tvm.rpc.server.workpath")(file_name)
+        # Reset driver stack
+        xlnk.Xlnk().xlnk_reset()
         bitstream = Bitstream(path)
         bitstream.download()
         logging.info("Program FPGA with %s", file_name)
@@ -70,6 +74,7 @@ def server_start():
         cfg_json : str
             JSON string used for configurations.
         """
+        # This ensures the tmp directory does not fill out too much
         if runtime_dll:
             raise RuntimeError("Can only reconfig in the beginning of session...")
         env = get_env()
@@ -82,14 +87,24 @@ def server_start():
             if pkg.same_config(old_cfg):
                 logging.info("Skip reconfig_runtime due to same config.")
                 return
-        cflags = ["-O2", "-std=c++11"]
-        cflags += pkg.cflags
-        ldflags = pkg.ldflags
-        lib_name = dll_path
-        source = pkg.lib_source
-        logging.info("Rebuild runtime:\n output=%s,\n cflags=%s,\n source=%s,\n ldflags=%s",
-                     dll_path, '\n\t'.join(cflags), '\n\t'.join(source), '\n\t'.join(ldflags))
-        cc.create_shared(lib_name, source, cflags + ldflags)
+        # check if a dll matching the configuration has been cached
+        dll_root, dll_ext = os.path.splitext(dll_path)
+        cached_dll_path = dll_root + '-' + pkg.signature + dll_ext
+        if os.path.isfile(cached_dll_path):
+            copyfile(cached_dll_path, dll_path)
+            logging.info("Swapping in cached dll: source=%s, destination=%s",
+                    cached_dll_path, dll_path)
+        else:
+            cflags = ["-O2", "-std=c++11"]
+            cflags += pkg.cflags
+            ldflags = pkg.ldflags
+            lib_name = dll_path
+            source = pkg.lib_source
+            logging.info("Rebuild runtime:\n output=%s,\n cflags=%s,\n source=%s,\n ldflags=%s",
+                         dll_path, '\n\t'.join(cflags), '\n\t'.join(source), '\n\t'.join(ldflags))
+            cc.create_shared(lib_name, source, cflags + ldflags)
+            copyfile(dll_path, cached_dll_path)
+            logging.info("Caching dll to: %s", cached_dll_path)
         with open(cfg_path, "w") as outputfile:
             outputfile.write(pkg.cfg_json)
 

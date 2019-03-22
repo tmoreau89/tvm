@@ -10,6 +10,7 @@ from .. import build_module as _build
 from .. import op as _op
 from ... import make as _make
 from ..base import NodeBase, register_relay_node
+from ..._ffi.function import register_func, get_global_func
 
 
 class QAnnotateKind(object):

@@ -16,6 +16,11 @@
 namespace vta {
 namespace sim {
 
+/*! \brief debug flag for skipping computation */
+enum DebugFlagMask {
+  kSkipExec = 1
+};
+
 /*!
  * \brief Helper class to pack and unpack bits
  *  Applies truncation when pack to low level bits.
@@ -234,8 +239,12 @@ class SRAM {
     return &(data_[index]);
   }
   // Execute the load instruction on this SRAM
-  void Load(const VTAMemInsn* op, DRAM* dram, uint64_t* load_counter) {
+  void Load(const VTAMemInsn* op,
+            DRAM* dram,
+            uint64_t* load_counter,
+            bool skip_exec) {
     load_counter[0] += (op->x_size * op->y_size) * kElemBytes;
+    if (skip_exec) return;
     DType* sram_ptr = data_ + op->sram_base;
     uint8_t* dram_ptr = static_cast<uint8_t*>(dram->GetAddr(
         op->dram_base * kElemBytes));
@@ -306,6 +315,8 @@ class Profiler {
   uint64_t gemm_counter{0};
   /*! \brief instr counter for ALU ops */
   uint64_t alu_counter{0};
+  /*! \brief set debug mode */
+  int64_t debug_flag{0};
   /*! \brief clear the profiler */
   void Clear() {
     inp_load_nbytes = 0;
@@ -315,6 +326,10 @@ class Profiler {
     out_store_nbytes = 0;
     gemm_counter = 0;
     alu_counter = 0;
+  }
+  /*! \return Whether we should skip execution. */
+  bool SkipExec() const {
+    return (debug_flag & DebugFlagMask::kSkipExec) != 0;
   }
 
   std::string AsJSON() {
@@ -379,13 +394,15 @@ class Device {
   void RunLoad(const VTAMemInsn* op) {
     if (op->x_size == 0) return;
     if (op->memory_type == VTA_MEM_ID_INP) {
-      inp_.Load(op, dram_, &(prof_->inp_load_nbytes));
+      inp_.Load(op, dram_, &(prof_->inp_load_nbytes), prof_->SkipExec());
     } else if (op->memory_type == VTA_MEM_ID_WGT) {
-      wgt_.Load(op, dram_, &(prof_->wgt_load_nbytes));
+      wgt_.Load(op, dram_, &(prof_->wgt_load_nbytes), prof_->SkipExec());
     } else if (op->memory_type == VTA_MEM_ID_ACC) {
-      acc_.Load(op, dram_, &(prof_->acc_load_nbytes));
+      acc_.Load(op, dram_, &(prof_->acc_load_nbytes), prof_->SkipExec());
     } else if (op->memory_type == VTA_MEM_ID_UOP) {
-      uop_.Load(op, dram_, &(prof_->uop_load_nbytes));
+      // always load in uop, since uop is stateful
+      // subsequent non-debug mode exec can depend on it.
+      uop_.Load(op, dram_, &(prof_->uop_load_nbytes), false);
     } else {
       LOG(FATAL) << "Unknown memory_type=" << op->memory_type;
     }
@@ -397,16 +414,27 @@ class Device {
         op->memory_type == VTA_MEM_ID_UOP) {
       prof_->out_store_nbytes += (
           op->x_size * op->y_size * VTA_BATCH * VTA_BLOCK_OUT * VTA_OUT_WIDTH / 8);
-      acc_.TruncStore<VTA_OUT_WIDTH>(op, dram_);
+      if (!prof_->SkipExec()) {
+        acc_.TruncStore<VTA_OUT_WIDTH>(op, dram_);
+      }
     } else {
       LOG(FATAL) << "Store do not support memory_type="
                  << op->memory_type;
     }
   }
 
+  int32_t IntTrunc(int32_t value, int32_t bits) {
+    if (bits >= 32) return value;
+    int leftbits = (32 - bits);
+    value = value & ((1 << bits) -1);
+    value = (value << leftbits) >> leftbits;
+    return value;
+  }
+
   void RunGEMM(const VTAGemInsn* op) {
     if (!op->reset_reg) {
-      prof_->gemm_counter += op->iter_out * op->iter_in;
+      prof_->gemm_counter += op->iter_out * op->iter_in * (op->uop_end - op->uop_bgn);
+      if (prof_->SkipExec()) return;
       for (uint32_t y = 0; y < op->iter_out; ++y) {
         for (uint32_t x = 0; x < op->iter_in; ++x) {
           for (uint32_t uindex = op->uop_bgn; uindex < op->uop_end; ++uindex) {
@@ -432,6 +460,7 @@ class Device {
                   sum +=
                       inp.GetSigned(i * VTA_BLOCK_IN + k) *
                       wgt.GetSigned(j * VTA_BLOCK_IN + k);
+                  sum = IntTrunc(sum, VTA_REG_WIDTH);
                 }
                 acc.SetSigned(acc_offset, sum);
               }
@@ -440,6 +469,7 @@ class Device {
         }
       }
     } else {
+      if (prof_->SkipExec()) return;
       // reset
       for (uint32_t y = 0; y < op->iter_out; ++y) {
         for (uint32_t x = 0; x < op->iter_in; ++x) {
@@ -458,7 +488,6 @@ class Device {
   }
 
   void RunALU(const VTAAluInsn* op) {
-    prof_->alu_counter += op->iter_out * op->iter_in;
     if (op->use_imm) {
       RunALU_<true>(op);
     } else {
@@ -484,6 +513,11 @@ class Device {
             return std::min(x, y);
           });
       }
+      case VTA_ALU_OPCODE_MUL: {
+        return RunALULoop<use_imm>(op, [](int32_t x, int32_t y) {
+            return x * y;
+          });
+      }
       case VTA_ALU_OPCODE_SHR: {
         return RunALULoop<use_imm>(op, [](int32_t x, int32_t y) {
             if (y >= 0) {
@@ -501,6 +535,8 @@ class Device {
 
   template<bool use_imm, typename F>
   void RunALULoop(const VTAAluInsn* op, F func) {
+    prof_->alu_counter += op->iter_out * op->iter_in * (op->uop_end - op->uop_bgn);
+    if (prof_->SkipExec()) return;
     for (int y = 0; y < op->iter_out; ++y) {
       for (int x = 0; x < op->iter_in; ++x) {
         for (int k = op->uop_bgn; k < op->uop_end; ++k) {
@@ -513,11 +549,13 @@ class Device {
           BitPacker<VTA_ACC_WIDTH> dst(acc_.BeginPtr(dst_index));
           BitPacker<VTA_ACC_WIDTH> src(acc_.BeginPtr(src_index));
           for (int k = 0; k < VTA_BLOCK_OUT; ++k) {
+            int32_t value;
             if (use_imm) {
-              dst.SetSigned(k, func(dst.GetSigned(k), op->imm));
+              value = func(dst.GetSigned(k), op->imm);
             } else {
-              dst.SetSigned(k, func(dst.GetSigned(k), src.GetSigned(k)));
+              value = func(dst.GetSigned(k), src.GetSigned(k));
             }
+            dst.SetSigned(k, IntTrunc(value, VTA_REG_WIDTH));
           }
         }
       }
@@ -543,6 +581,10 @@ TVM_REGISTER_GLOBAL("vta.simulator.profiler_clear")
 .set_body([](TVMArgs args, TVMRetValue* rv) {
     Profiler::ThreadLocal()->Clear();
   });
+TVM_REGISTER_GLOBAL("vta.simulator.profiler_debug_mode")
+.set_body([](TVMArgs args, TVMRetValue* rv) {
+    Profiler::ThreadLocal()->debug_flag = args[0];
+  });
 TVM_REGISTER_GLOBAL("vta.simulator.profiler_status")
 .set_body([](TVMArgs args, TVMRetValue* rv) {
     *rv = Profiler::ThreadLocal()->AsJSON();
@@ -562,10 +604,10 @@ vta_phy_addr_t VTAMemGetPhyAddr(void* buf) {
   return vta::sim::DRAM::Global()->GetPhyAddr(buf);
 }
 
-void VTAFlushCache(vta_phy_addr_t buf, int size) {
+void VTAFlushCache(void* vir_addr, vta_phy_addr_t phy_addr, int size) {
 }
 
-void VTAInvalidateCache(vta_phy_addr_t buf, int size) {
+void VTAInvalidateCache(void* vir_addr, vta_phy_addr_t phy_addr, int size) {
 }
 
 VTADeviceHandle VTADeviceAlloc() {

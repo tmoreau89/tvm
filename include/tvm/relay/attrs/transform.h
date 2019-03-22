@@ -213,6 +213,18 @@ struct SliceLikeAttrs : public tvm::AttrsNode<SliceLikeAttrs> {
   }
 };
 
+
+/*! \brief Attributes for Annotate operator */
+struct AnnotateAttrs : public tvm::AttrsNode<AnnotateAttrs> {
+  std::string info;
+
+  TVM_DECLARE_ATTRS(AnnotateAttrs, "relay.attrs.AnnotateAttrs") {
+    TVM_ATTR_FIELD(info)
+      .describe("The annotation info.");
+  }
+};
+
+
 /*! \brief Attributes for Clip operator */
 struct ClipAttrs : public tvm::AttrsNode<ClipAttrs> {
   double a_min;

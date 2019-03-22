@@ -47,7 +47,9 @@ struct DataBuffer {
    */
   void InvalidateCache(size_t offset, size_t size) {
     if (!kBufferCoherent) {
-      VTAInvalidateCache(phy_addr_ + offset, size);
+      VTAInvalidateCache(reinterpret_cast<char *>(data_) + offset,
+                         phy_addr_ + offset,
+                         size);
     }
   }
   /*!
@@ -57,7 +59,9 @@ struct DataBuffer {
    */
   void FlushCache(size_t offset, size_t size) {
     if (!kBufferCoherent) {
-      VTAFlushCache(phy_addr_ + offset, size);
+      VTAFlushCache(reinterpret_cast<char *>(data_) + offset,
+                    phy_addr_ + offset,
+                    size);
     }
   }
   /*!
@@ -65,7 +69,7 @@ struct DataBuffer {
    * \param size The size of the buffer.
    */
   static DataBuffer* Alloc(size_t size) {
-    void* data = VTAMemAlloc(size, 1);
+    void* data = VTAMemAlloc(size, VTA_CACHED);
     CHECK(data != nullptr);
     DataBuffer* buffer = new DataBuffer();
     buffer->data_ = data;
@@ -311,12 +315,16 @@ class BaseQueue {
   void AutoReadBarrier() {
     ReadBarrier(elem_bytes_ * 8, 0, dram_end_);
   }
+  void AutoWriteBarrier() {
+    WriteBarrier(elem_bytes_ * 8, 0, dram_end_);
+  }
   /*! \brief Writer barrier to make sure that data written by CPU is visible to VTA. */
   void ReadBarrier(uint32_t elem_bits, uint32_t dram_begin, uint32_t dram_extent) {
     if (!coherent_ && always_cache_ && dram_extent != 0) {
       dram_begin = dram_begin * elem_bits / 8;
       dram_extent = dram_extent * elem_bits / 8;
-      VTAFlushCache(dram_phy_addr_ + dram_begin,
+      VTAFlushCache(dram_buffer_ + dram_begin,
+                    dram_phy_addr_ + dram_begin,
                     dram_extent);
     }
   }
@@ -325,7 +333,8 @@ class BaseQueue {
     if (!coherent_ && always_cache_ && dram_extent != 0) {
       dram_begin = dram_begin * elem_bits / 8;
       dram_extent = dram_extent * elem_bits / 8;
-      VTAInvalidateCache(dram_phy_addr_ + dram_begin,
+      VTAInvalidateCache(dram_buffer_ + dram_begin,
+                         dram_phy_addr_ + dram_begin,
                          dram_extent);
     }
   }
@@ -836,7 +845,7 @@ class InsnQueue : public BaseQueue {
     if (insn->opcode == VTA_OPCODE_STORE) {
       // FIXME: Right now memory_type is a 2-bit field which means that
       //        VTA_MEM_ID_OUT will appear as 0. For now we'll refrain from
-      //        checking the memory_type to avoid an CHECKion error...
+      //        checking the memory_type to avoid an assertion error...
       return kStoreStage;
     }
     LOG(FATAL) << "not reached";
@@ -885,12 +894,12 @@ class CommandQueue {
     insn_queue_.InitSpace();
     device_ = VTADeviceAlloc();
     CHECK(device_ != nullptr);
-    printf("Initialize VTACommandHandle...\n");
+    //printf("Initialize VTACommandHandle...\n");
   }
 
   ~CommandQueue() {
     VTADeviceFree(device_);
-    printf("Close VTACommandhandle...\n");
+    //printf("Close VTACommandhandle...\n");
   }
 
   uint32_t GetElemBytes(uint32_t memory_id) {
@@ -1188,9 +1197,9 @@ class CommandQueue {
   // The kernel we currently recording
   UopKernel* record_kernel_{nullptr};
   // Micro op queue
-  UopQueue<VTA_MAX_XFER, true, true> uop_queue_;
+  UopQueue<VTA_MAX_XFER, kBufferCoherent, VTA_CACHED> uop_queue_;
   // instruction queue
-  InsnQueue<VTA_MAX_XFER, true, true> insn_queue_;
+  InsnQueue<VTA_MAX_XFER, kBufferCoherent, VTA_CACHED> insn_queue_;
   // Device handle
   VTADeviceHandle device_{nullptr};
 };

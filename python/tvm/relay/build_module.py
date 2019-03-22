@@ -40,6 +40,7 @@ class BuildConfig(object):
         "add_pass": None,
         "disable_pass": None,
         "fallback_device": None,
+        "disable_pass": None,
     }
 
     def __init__(self, **kwargs):
@@ -104,6 +105,7 @@ def build_config(**kwargs):
 
     disable_pass: Set[str]
         Optimization pass to be disabled regardless of optimization level.
+
 
     fallback_device : str or tvm.TVMContext
         The fallback device. It is also used as the default device for

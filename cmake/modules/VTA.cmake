@@ -39,7 +39,7 @@ elseif(PYTHON)
   endif(APPLE)
 
   # PYNQ rules for Pynq v2.3
-  if(${VTA_TARGET} STREQUAL "pynq")
+  if(${VTA_TARGET} STREQUAL "pynq" OR ${VTA_TARGET} STREQUAL "ultra96")
     find_library(__cma_lib NAMES cma PATH /usr/lib)
     target_link_libraries(vta ${__cma_lib})
   endif()

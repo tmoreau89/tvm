@@ -21,9 +21,9 @@ extern "C" {
 /*! \brief Memory management constants for non-cached memory */
 #define VTA_NOT_CACHED 0
 
-/*! \brief Physically contiguous buffer size limit */
+/*! \brief Physically contiguous buffer size limit in B */
 #ifndef VTA_MAX_XFER
-#define VTA_MAX_XFER (1<<22)
+#define VTA_MAX_XFER (1 << 25)
 #endif
 
 /*! \brief Device resource context  */
@@ -81,19 +81,23 @@ vta_phy_addr_t VTAMemGetPhyAddr(void* buf);
 
 /*!
  * \brief Flushes the region of memory out of the CPU cache to DRAM.
- * \param buf Pointer to memory region allocated with VTAMemAlloc to be flushed.
- *            This need to be the physical address.
+ * \param vir_addr Pointer to memory region allocated with VTAMemAlloc to be flushed.
+ *                 This need to be the virtual address.
+ * \param phy_addr Pointer to memory region allocated with VTAMemAlloc to be flushed.
+ *                 This need to be the physical address.
  * \param size Size of the region to flush in Bytes.
  */
-void VTAFlushCache(vta_phy_addr_t buf, int size);
+void VTAFlushCache(void* vir_addr, vta_phy_addr_t phy_addr, int size);
 
 /*!
  * \brief Invalidates the region of memory that is cached.
- * \param buf Pointer to memory region allocated with VTAMemAlloc to be invalidated.
- *            This need to be the physical address.
+ * \param vir_addr Pointer to memory region allocated with VTAMemAlloc to be flushed.
+ *                 This need to be the virtual address.
+ * \param phy_addr Pointer to memory region allocated with VTAMemAlloc to be flushed.
+ *                 This need to be the physical address.
  * \param size Size of the region to invalidate in Bytes.
  */
-void VTAInvalidateCache(vta_phy_addr_t buf, int size);
+void VTAInvalidateCache(void* vir_addr, vta_phy_addr_t phy_addr, int size);
 
 #ifdef __cplusplus
 }

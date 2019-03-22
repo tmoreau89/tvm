@@ -22,9 +22,13 @@ class PkgConfig(object):
     """
     cfg_keys = [
         "TARGET",
+        "HW_VER",
         "HW_FREQ",
         "HW_CLK_TARGET",
-        "HW_VER",
+        "ALU_EN",
+        "MUL_EN",
+        "GEMM_II",
+        "TALU_II",
         "LOG_INP_WIDTH",
         "LOG_WGT_WIDTH",
         "LOG_ACC_WIDTH",
@@ -32,10 +36,11 @@ class PkgConfig(object):
         "LOG_BATCH",
         "LOG_BLOCK_IN",
         "LOG_BLOCK_OUT",
+        "LOG_BUS_WIDTH",
         "LOG_UOP_BUFF_SIZE",
         "LOG_INP_BUFF_SIZE",
         "LOG_WGT_BUFF_SIZE",
-        "LOG_ACC_BUFF_SIZE",
+        "LOG_ACC_BUFF_SIZE"
     ]
     def __init__(self, cfg, proj_root):
         # include path
@@ -65,12 +70,32 @@ class PkgConfig(object):
                 "-L/opt/python3.6/lib/python3.6/site-packages/pynq/drivers/",
                 "-L/opt/python3.6/lib/python3.6/site-packages/pynq/lib/",
                 "-l:libdma.so"]
+        elif self.target == "ultra96":
+            self.ldflags = [
+                "-L/usr/lib",
+                "-lcma"]
         else:
             self.ldflags = []
 
     @property
     def cflags(self):
         return self.include_path + self.macro_defs
+
+    @property
+    def signature(self):
+        return "{}-{}_{}_{}_{}_{}_{}_{}_{}_{}_{}_{}".format(
+                self.cfg_dict["TARGET"],
+                self.cfg_dict["LOG_BATCH"],
+                self.cfg_dict["LOG_BLOCK_IN"],
+                self.cfg_dict["LOG_BLOCK_OUT"],
+                self.cfg_dict["LOG_INP_WIDTH"],
+                self.cfg_dict["LOG_WGT_WIDTH"],
+                self.cfg_dict["LOG_OUT_WIDTH"],
+                self.cfg_dict["LOG_BUS_WIDTH"],
+                self.cfg_dict["LOG_UOP_BUFF_SIZE"],
+                self.cfg_dict["LOG_INP_BUFF_SIZE"],
+                self.cfg_dict["LOG_WGT_BUFF_SIZE"],
+                self.cfg_dict["LOG_ACC_BUFF_SIZE"])
 
     @property
     def cfg_json(self):

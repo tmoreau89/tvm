@@ -3,8 +3,13 @@
 from __future__ import absolute_import as _abs
 from numbers import Integral
 
+import ctypes
 import tvm
 from . import tag
+
+class InvalidShapeError(ValueError):
+    """Invalid shape for a topi function. i.e. call winograd template for non-3x3 kernel)"""
+    pass
 
 def traverse_inline(s, final_op, callback):
     """Traverse computation graph and do auto inline
@@ -281,3 +286,16 @@ def get_max_power2_factor(n, max_value=None):
         x *= 2
         n /= 2
     return x
+
+
+@tvm.register_func("print_tensor")
+def print_tensor_impl(x, y, msg):
+    print(ctypes.string_at(msg))
+    print(x.asnumpy())
+    x.copyto(y)
+
+
+def print_tensor(x, msg=""):
+    return tvm.extern(x.shape, [x], lambda ins, outs:
+                      tvm.call_packed("print_tensor", ins[0], outs[0], msg),
+                      name='print_tensor')

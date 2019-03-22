@@ -16,6 +16,10 @@ def run(run_func):
     env = get_env()
 
     if env.TARGET == "sim":
+        # Make sure simulation library exists
+        # If this fails, build vta on host (make)
+        # with TARGET="sim" in the json.config file.
+        assert simulator.enabled()
 
         # Talk to local RPC if necessary to debug RPC server.
         # Compile vta on your host with make at the root.
@@ -26,18 +30,13 @@ def run(run_func):
         # the port it's listening to, e.g. 9090
         local_rpc = int(os.environ.get("VTA_LOCAL_SIM_RPC", "0"))
         if local_rpc:
-            remote = rpc.connect("localhost", local_rpc)
-            run_func(env, remote)
+            run_func(env, rpc.connect("localhost", local_rpc))
         else:
-            # Make sure simulation library exists
-            # If this fails, build vta on host (make)
-            # with TARGET="sim" in the json.config file.
-            assert simulator.enabled()
             run_func(env, rpc.LocalSession())
 
     elif env.TARGET == "pynq":
 
-        # Run on PYNQ if env variable exists
+        # Run on Pynq if env variable exists
         host = os.environ.get("VTA_PYNQ_RPC_HOST", None)
         port = int(os.environ.get("VTA_PYNQ_RPC_PORT", None))
         if host and port:
@@ -46,3 +45,15 @@ def run(run_func):
         else:
             raise RuntimeError(
                 "Please set the VTA_PYNQ_RPC_HOST and VTA_PYNQ_RPC_PORT environment variables")
+
+    elif env.TARGET == "ultra96":
+
+        # Run on Ultra96 if env variable exists
+        host = os.environ.get("VTA_ULTRA96_RPC_HOST", None)
+        port = int(os.environ.get("VTA_ULTRA96_RPC_PORT", None))
+        if host and port:
+            remote = rpc.connect(host, port)
+            run_func(env, remote)
+        else:
+            raise RuntimeError(
+                "Please set the VTA_ULTRA96_RPC_HOST and VTA_ULTRA96_RPC_PORT environment variables")

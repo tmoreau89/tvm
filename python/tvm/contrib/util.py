@@ -173,4 +173,4 @@ def get_lower_ir(s):
     for out in outputs:
         find_all(out)
 
-    return lower(s, inputs, simple_mode=True)
+    return lower(s, inputs + [x.output(0) for x in outputs], simple_mode=True)

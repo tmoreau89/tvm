@@ -28,7 +28,6 @@ def get_bitstream_path():
 
     # Derive destination path
     cache_dir = os.getenv("VTA_CACHE_PATH", os.path.join(os.getenv("HOME"), ".vta_cache/"))
-    cache_dir = os.path.join(cache_dir, env.TARGET)
     # Create the directory if it didn't exist
     if not os.path.exists(cache_dir):
         os.makedirs(cache_dir)
@@ -42,6 +41,10 @@ def download_bitstream():
     """
 
     env = get_env()
+
+    if env.TARGET == "sim":
+        print("Skipping programming phase in sim mode")
+        return True
 
     success = False
     bit = get_bitstream_path()

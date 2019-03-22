@@ -28,21 +28,18 @@ extern "C" {
 void* cma_alloc(size_t size, int cached);
 void cma_free(void* buf);
 uint32_t cma_get_phy_addr(void* buf);
+void cma_flush_cache(void* buf, unsigned int phys_addr, int size);
+void cma_invalidate_cache(void* buf, unsigned int phys_addr, int size);
+uint32_t cma_pages_available();
 #endif
-void xlnkFlushCache(void* buf, int size);
-void xlnkInvalidateCache(void* buf, int size);
 
 void *VTAMapRegister(uint32_t addr, size_t length);
 void VTAUnmapRegister(void *vta, size_t length);
 void VTAWriteMappedReg(void* base_addr, uint32_t offset, uint32_t val);
 uint32_t VTAReadMappedReg(void* base_addr, uint32_t offset);
 
-/*! \brief (Pynq only) Path to /dev/mem */
-#define VTA_PYNQ_DEV_MEM_PATH "/dev/mem"
-/*! \brief (Pynq only) MMIO driver constant */
-#define VTA_PYNQ_MMIO_WORD_LENGTH 4
-/*! \brief (Pynq only) MMIO driver constant */
-#define VTA_PYNQ_MMIO_WORD_MASK (~(MMIO_WORD_LENGTH - 1))
+/*! \brief Path to /dev/mem */
+#define VTA_DEV_MEM_PATH "/dev/mem"
 
 /*! \brief VTA configuration register address range */
 #define VTA_RANGE 0x100

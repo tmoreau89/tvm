@@ -5,6 +5,7 @@ Decorator and utilities for the integration with TOPI and NNVM
 """
 import warnings
 import logging
+import sys
 
 
 from ... import target as _target
@@ -15,11 +16,10 @@ from .topi_integration import TaskExtractEnv
 logger = logging.getLogger('autotvm')
 
 
-def extract_from_graph(graph, shape, dtype, target, symbols, target_host=None):
+def extract_from_graph(graph, shape, dtype, target, symbols, params, target_host=None):
     """ Extract tuning tasks from a nnvm graph.
 
-    This function collects tuning tasks by building the graph
-    with a "tracing" target and tracing all the calls to topi.
+    This function collects tuning tasks by building the graph and trace all the calls to topi.
 
     Parameters
     ----------
@@ -33,6 +33,8 @@ def extract_from_graph(graph, shape, dtype, target, symbols, target_host=None):
         The compilation target
     symbols : Array of nnvm.symbol
         Array of nnvm symbols want to be tuned
+    params : dict of str to NDArray
+        The parameter dictionary.
     target_host: tvm.target.Target
         The host compilation target
 
@@ -45,7 +47,7 @@ def extract_from_graph(graph, shape, dtype, target, symbols, target_host=None):
     import nnvm
     import topi
 
-    env = TaskExtractEnv.get()
+    env = TaskExtractEnv(symbols)
 
     #NOTE: To add more symbols, you only need to change the following lists
     #nnvm symbol -> topi compute
@@ -63,26 +65,25 @@ def extract_from_graph(graph, shape, dtype, target, symbols, target_host=None):
         else:
             warnings.warn("Symbol %s is not tunable, ignored" % sym_name)
 
-    # run compiler to collect all TOPI calls during compilation
-    env.reset(topi_funcs)
+        # run compiler to collect all TOPI calls during compilation
+        nnvm.compiler.engine.clear_cache()
+        with ApplyHistoryBest([]):
+            nnvm.compiler.build(graph, target=target, shape=shape, dtype=dtype,
+                                target_host=target_host, params=params)
+        nnvm.compiler.engine.clear_cache()
 
-    # disable logger temporarily
-    old_state = logger.disabled
-    logger.disabled = True
-
-    # use a "tracing" target to do a fake compile for collecting topi calls
-    tracing_target = _target.create("llvm -device=tracing")
-    nnvm.compiler.engine.clear_cache()
-    nnvm.compiler.build(graph, target=tracing_target, shape=shape, dtype=dtype)
-
-    logger.disabled = old_state
+        logger.disabled = old_state
 
     # create tasks for target
     tasks = []
     for task_name, args in env.get_tasks():
-        tasks.append(create(task_name, args,
-                            target=target, target_host=target_host,
-                            template_key='direct'))
+        try:
+            tsk = create(task_name, args,
+                         target=target, target_host=target_host,
+                         template_key='direct')
+            tasks.append(tsk)
+        except topi.InvalidShapeError:
+            print("[Warning] invalid shape")
 
     return tasks
 

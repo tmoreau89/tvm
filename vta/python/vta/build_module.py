@@ -2,7 +2,9 @@
 from __future__ import absolute_import as _abs
 
 import tvm
+from tvm import rpc
 from . import ir_pass
+from . import ptr_alias
 from .environment import get_env
 
 
@@ -52,7 +54,9 @@ def build_config(debug_flag=0, **kwargs):
             debug_flag)
 
         return tvm.make.stmt_seq(debug, stmt)
-    pass_list = [(1, ir_pass.inject_dma_intrin),
+    pass_list = [(0, ir_pass.inject_conv2d_transpose_skip),
+                 (1, ptr_alias.lower_ptr_alias),
+                 (1, ir_pass.inject_dma_intrin),
                  (1, ir_pass.inject_skip_copy),
                  (1, ir_pass.annotate_alu_coproc_scope),
                  (1, lambda x: tvm.ir_pass.LiftAttrScope(x, "coproc_uop_scope", True)),
@@ -99,3 +103,53 @@ def build(*args, **kwargs):
         with build_config():
             return tvm.build(*args, **kwargs)
     return tvm.build(*args, **kwargs)
+
+
+def vta_autotvm_build_func(measure_input, tmp_dir, **kwargs):
+    """Custom build func for VTA. Used for autotvm"""
+
+    import time
+    import os
+    from random import getrandbits
+    from tvm.autotvm.util import get_const_tuple
+    from tvm.autotvm.measure.measure_methods import BuildResult, InstantiationError
+
+    tic = time.time()
+    try:
+        filename = os.path.join(tmp_dir, "tmp_func_%0x.tar" % getrandbits(64))
+        target, task, config = measure_input
+
+        with target:
+            s, args = task.instantiate(config)
+            if not config.valid():
+                raise InstantiationError(config.errors)
+
+            func = build(s, args, target_host=task.target_host)
+            func_sim = build(s, args)
+
+        arg_info =  tuple((get_const_tuple(x.shape), x.dtype) for x in args)
+        func.export_library(filename)
+
+        # When targeting VTA test the schedule on simulator first
+        if measure_input.target.device_name == 'vta':
+            from vta import reconfig_runtime
+            # Note: if you're not running the RPC locally, you cannot benefit
+            # from rumtime recompilation...
+            local_rpc_port = int(os.environ.get("VTA_LOCAL_SIM_RPC_PORT", "0"))
+            if local_rpc_port:
+                remote = rpc.connect("localhost", local_rpc_port)
+                reconfig_runtime(remote)
+            else:
+                remote = rpc.LocalSession()
+            obj_path = os.path.join(tmp_dir, "tmp_func_%0x.tar" % getrandbits(64))
+            func_sim.export_library(obj_path)
+            remote.upload(obj_path)
+            f = remote.load_module(os.path.split(obj_path)[1])
+            ctx = remote.context(str(measure_input.target), 0)
+            args = [tvm.nd.empty(x[0], dtype=x[1], ctx=ctx) for x in arg_info]
+            f(*args)
+
+    except Exception as e:  # pylint: disable=broad-except
+        return BuildResult(None, None, e, time.time() - tic)
+    return BuildResult(filename, arg_info, None, time.time() - tic)
+

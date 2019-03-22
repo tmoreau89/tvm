@@ -8,6 +8,7 @@
 #include <thread>
 #include "pynq_driver.h"
 
+#define RESET_IOCTL _IOWR('X', 101, unsigned long)
 
 void* VTAMemAlloc(size_t size, int cached) {
   return cma_alloc(size, cached);
@@ -21,12 +22,12 @@ vta_phy_addr_t VTAMemGetPhyAddr(void* buf) {
   return cma_get_phy_addr(buf);
 }
 
-void VTAFlushCache(vta_phy_addr_t buf, int size) {
-  xlnkFlushCache(reinterpret_cast<void*>(buf), size);
+void VTAFlushCache(void* vir_addr, vta_phy_addr_t phy_addr, int size) {
+  cma_flush_cache(vir_addr, phy_addr, size);
 }
 
-void VTAInvalidateCache(vta_phy_addr_t buf, int size) {
-  xlnkInvalidateCache(reinterpret_cast<void*>(buf), size);
+void VTAInvalidateCache(void* vir_addr, vta_phy_addr_t phy_addr, int size) {
+  cma_invalidate_cache(vir_addr, phy_addr, size);
 }
 
 void *VTAMapRegister(uint32_t addr, size_t length) {
@@ -35,7 +36,7 @@ void *VTAMapRegister(uint32_t addr, size_t length) {
   // Calculate base address offset w.r.t the base address
   uint32_t virt_offset = addr - virt_base;
   // Open file and mmap
-  uint32_t mmap_file = open(VTA_PYNQ_DEV_MEM_PATH, O_RDWR|O_SYNC);
+  uint32_t mmap_file = open(VTA_DEV_MEM_PATH, O_RDWR|O_SYNC);
   return mmap(NULL,
               (length+virt_offset),
               PROT_READ|PROT_WRITE,

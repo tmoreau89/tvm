@@ -207,7 +207,18 @@ class RPCRunner(Runner):
                               for x in arg_bufs]
             func = build(s, arg_bufs, "llvm")
             tvm_buf = [nd.array(x) for x in self.ref_input]
-            func(*tvm_buf)
+
+            def _run_func():
+                """Run tvm function in a thread.
+                Because there are some issues with python multiprocessing and the thread pool in tvm
+                """
+                func(*tvm_buf)
+
+            thread = threading.Thread(target=_run_func)
+            thread.start()
+            thread.join()
+            del thread
+
             self.ref_output = [x.asnumpy() for x in tvm_buf]
 
     def get_build_kwargs(self):
@@ -435,6 +446,11 @@ def run_through_rpc(measure_input, build_result,
     try:
         # upload built module
         remote = request_remote(*remote_args)
+	# When tuning schedule for VTA, re-program FPGA to avoid "stale" state
+        if measure_input.target.device_name == 'vta':
+            from vta import program_fpga, reconfig_runtime
+            program_fpga(remote, None)
+            reconfig_runtime(remote)
         remote.upload(build_result.filename)
         func = remote.load_module(os.path.split(build_result.filename)[1])
         ctx = remote.context(str(measure_input.target), 0)

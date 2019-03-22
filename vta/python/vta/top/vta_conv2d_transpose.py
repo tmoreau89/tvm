@@ -1,58 +1,24 @@
-import logging
-from collections import namedtuple
+"""Namespace for supporting conv2d_transpose + ewise variant of nnvm."""
+
+from topi.nn.util import get_pad_tuple
 
 import tvm
+from tvm import autotvm
 import topi
-from topi.nn.util import get_pad_tuple
-from topi.util import get_const_int, get_const_tuple
-from tvm.contrib.util import get_lower_ir
+from topi.util import get_const_tuple
+
+import numpy as np
 
 from ..environment import get_env
 
 
-Workload = namedtuple("Conv2DTransposeWorkload",
-                      ('batch', 'height', 'width', 'in_filter', 'out_filter',
-                       'hkernel', 'wkernel', 'hpad', 'wpad', 'hstride', 'wstride'))
-
-Schedule = namedtuple("Conv2DTransposeSchedule",
-                      ('b_factor', 'oc_factor', 'ic_factor', 'h_factor', 'w_factor',
-                       'oc_nthread', 'h_nthread', 'debug_sync'))
-
-workloads = [
-    Workload(1,  4,  4, 1024, 512, 4, 4, 1, 1, 2, 2),
-    Workload(1,  8,  8,  512, 256, 4, 4, 1, 1, 2, 2),
-    Workload(1, 16, 16,  256, 128, 4, 4, 1, 1, 2, 2),
-]
-
-schedules = [
-    Schedule(1, 16, 1, 8, 8, 1, 1, False),
-    Schedule(1, 4, 1, 16, 16, 1, 1, False),
-    Schedule(1, 1, 1, 32, 32, 1, 1, False),
-]
-
-injected_schedule = None
-
-
-def find_schedules(layer, vt_only=False, best_only=False):
-    global injected_schedule
-    if injected_schedule:
-        return [injected_schedule]
-    for i, wkl in enumerate(workloads):
-        if str(wkl) == str(layer):
-            return [schedules[i]]
-    raise RuntimeError("No schedule for " + str(layer))
-
-
-def inject_schedule(sch):
-    global injected_schedule
-    injected_schedule = sch
-
-
-def packed_conv2d_transpose(data,
+@autotvm.register_topi_compute(topi.nn.conv2d_transpose_nchw, 'vta', 'direct')
+def packed_conv2d_transpose(cfg,
+                            data,
                             kernel,
-                            padding,
                             strides,
-                            out_dtype="int32"):
+                            padding,
+                            out_dtype):
     env = get_env()
 
     batch, in_c, in_h, in_w, B_BATCH, B_CI = get_const_tuple(data.shape)
@@ -73,7 +39,7 @@ def packed_conv2d_transpose(data,
                            [0, 0, (bpad_bottom + stride_h - 1) // stride_h,
                             (bpad_right + stride_w - 1) // stride_w, 0, 0],
                            name='pad_data')
-    border_h = (stride_h - bpad_top % stride_h) % stride_h  # remove extra padding introduced by dilatation
+    border_h = (stride_h - bpad_top % stride_h) % stride_h  # remove extra padding introduced by dilation
     border_w = (stride_w - bpad_left % stride_w) % stride_w
 
     # dilation stage
@@ -103,7 +69,7 @@ def packed_conv2d_transpose(data,
     dw = tvm.reduce_axis((0, filter_w), name='dw')
     dci = tvm.reduce_axis((0, B_CI), name='dci')
 
-    Output = tvm.compute(
+    out = tvm.compute(
         (batch, out_c, out_h, out_w, B_BATCH, B_CO),
         lambda b, c, h, w, b_n, b_co: tvm.sum(
             _dilate(b, dc, h + dh + border_h, w + dw + border_w, b_n, dci).astype(out_dtype) *
@@ -114,18 +80,12 @@ def packed_conv2d_transpose(data,
         attrs={"workload": (batch * env.BATCH, in_h, in_w, in_c * env.BLOCK_IN, out_c * env.BLOCK_OUT,
                             filter_h, filter_w, padding[0], padding[1], stride_h, stride_w)})
 
-    return Output
+    return out
 
-global_plan = None
-
-def set_global_plan(plan):
-    global global_plan
-    global_plan = plan
-
-def schedule_packed_conv2d_transpose(outs):
+@autotvm.register_topi_schedule(topi.generic.schedule_conv2d_transpose_nchw, 'vta', 'direct')
+def schedule_packed_conv2d_transpose(cfg, outs):
     assert len(outs) == 1
     output = outs[0]
-    const_ops = []
     ewise_inputs = []
     ewise_ops = []
     conv2d_res = []
@@ -135,10 +95,7 @@ def schedule_packed_conv2d_transpose(outs):
     def _traverse(op):
         if topi.tag.is_broadcast(op.tag):
             if not op.same_as(output.op):
-                if len(op.axis) == 0:
-                    const_ops.append(op)
-                else:
-                    ewise_ops.append(op)
+                ewise_ops.append(op)
             for tensor in op.input_tensors:
                 if isinstance(tensor.op, tvm.tensor.PlaceholderOp):
                     ewise_inputs.append((op, tensor))
@@ -151,6 +108,19 @@ def schedule_packed_conv2d_transpose(outs):
     _traverse(output.op)
     assert len(conv2d_res) == 1
     conv2d_stage = conv2d_res[0].output(0)
+    s = tvm.create_schedule(output.op)
+
+    ##### space definition begin #####
+    b, co, h, w, bi, ci = s[conv2d_stage].op.axis
+    ci, kh, kw, bci = s[conv2d_stage].op.reduce_axis
+    cfg.define_split('tile_b', b, num_outputs=2)
+    cfg.define_split('tile_h', h, num_outputs=2)
+    cfg.define_split('tile_w', w, num_outputs=2)
+    cfg.define_split('tile_ci', ci, num_outputs=2)
+    cfg.define_split('tile_co', co, num_outputs=2)
+    cfg.define_knob('oc_nthread', [1, 2])
+    cfg.define_knob('h_nthread', [1, 2])
+    ###### space definition end ######
 
     data, kernel = conv2d_stage.op.input_tensors
     if isinstance(data.op, tvm.tensor.ComputeOp) and "pad" in data.op.tag:
@@ -160,17 +130,10 @@ def schedule_packed_conv2d_transpose(outs):
     else:
         pad_data = None
 
-    wrkld = Workload(*conv2d_stage.op.attrs['workload'])
-    plan = find_schedules(wrkld, vt_only=True, best_only=True)[0]
-    logging.info("Trying to find plan for %s", wrkld)
     env = get_env()
-
-    load_inp = load_wgt = load_out = store_out = env.dma_copy
+    load_inp = load_wgt = load_acc = store_out = env.dma_copy
     alu = env.alu
     gemm = env.gemm
-
-    # schedule1
-    s = tvm.create_schedule(output.op)
 
     # setup pad
     if pad_data is not None:
@@ -180,9 +143,9 @@ def schedule_packed_conv2d_transpose(outs):
         cdata = s.cache_read(data, env.inp_scope, [conv2d_stage])
     ckernel = s.cache_read(kernel, env.wgt_scope, [conv2d_stage])
     s[conv2d_stage].set_scope(env.acc_scope)
+
     # cache read input
     cache_read_ewise = []
-
     for consumer, tensor in ewise_inputs:
         cache_read_ewise.append(
             s.cache_read(tensor, env.acc_scope, [consumer]))
@@ -191,18 +154,11 @@ def schedule_packed_conv2d_transpose(outs):
         s[op].set_scope(env.acc_scope)
         s[op].pragma(s[op].op.axis[0], alu)
 
-    for op in const_ops:
-        s[op].compute_inline()
-
     # tile
-    oc_factor = (plan.oc_factor if plan.oc_factor else 1)
-    h_factor = (plan.h_factor if plan.h_factor else 1)
-    w_factor = (plan.w_factor if plan.w_factor else 1)
-
     x_bo, x_co, x_i, x_j, x_bi, x_ci = s[output].op.axis
-    x_co0, x_co1 = s[output].split(x_co, factor=oc_factor)
-    x_i0, x_i1 = s[output].split(x_i, factor=h_factor)
-    x_j0, x_j1 = s[output].split(x_j, factor=w_factor)
+    x_co0, x_co1 = cfg['tile_co'].apply(s, output, x_co)
+    x_i0, x_i1 = cfg['tile_h'].apply(s, output, x_i)
+    x_j0, x_j1 = cfg['tile_w'].apply(s, output, x_j)
     s[output].reorder(x_bo, x_i0, x_co0, x_j0, x_co1, x_i1, x_j1, x_bi, x_ci)
     store_pt = x_j0
 
@@ -213,17 +169,17 @@ def schedule_packed_conv2d_transpose(outs):
 
     for tensor in cache_read_ewise:
         s[tensor].compute_at(s[output], store_pt)
-        s[tensor].pragma(s[tensor].op.axis[0], load_out)
+        s[tensor].pragma(s[tensor].op.axis[0], load_acc)
 
     # virtual threading along output channel axes
-    if plan.oc_nthread > 1:
-        _, v_t = s[output].split(x_co0, factor=plan.oc_nthread)
+    if cfg['oc_nthread'].val > 1:
+        _, v_t = s[output].split(x_co0, factor=cfg['oc_nthread'].val)
         s[output].reorder(v_t, x_bo)
         s[output].bind(v_t, tvm.thread_axis("cthread"))
 
     # virtual threading along spatial rows
-    if plan.h_nthread > 1:
-        _, v_t = s[output].split(x_i0, factor=plan.h_nthread)
+    if cfg['h_nthread'].val > 1:
+        _, v_t = s[output].split(x_i0, factor=cfg['h_nthread'].val)
         s[output].reorder(v_t, x_bo)
         s[output].bind(v_t, tvm.thread_axis("cthread"))
 
@@ -236,11 +192,11 @@ def schedule_packed_conv2d_transpose(outs):
     for axis in [d_j, d_i, x_ii, x_jj]:
         s[conv2d_stage].unroll(axis)
 
-    ic_factor = plan.ic_factor or 1
-    if ic_factor:
-        k_o, _ = s[conv2d_stage].split(k_o, factor=ic_factor)
-        s[cdata].compute_at(s[conv2d_stage], k_o)
-        s[ckernel].compute_at(s[conv2d_stage], k_o)
+    # ic_factor = cfg['tile_ci'] or 1
+    # if ic_factor:
+    k_o, _ = cfg['tile_ci'].apply(s, conv2d_stage, k_o)
+    s[cdata].compute_at(s[conv2d_stage], k_o)
+    s[ckernel].compute_at(s[conv2d_stage], k_o)
 
     # Use VTA instructions
     s[cdata].pragma(s[cdata].op.axis[0], load_inp)

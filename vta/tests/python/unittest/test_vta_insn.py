@@ -183,8 +183,16 @@ def test_gemm():
 
             if env.TARGET == "sim":
                 simulator.clear_stats()
+                simulator.debug_mode(simulator.DEBUG_SKIP_EXEC)
                 f(x_nd, w_nd, y_nd)
-                print(simulator.stats())
+                stat1 = simulator.stats()
+                simulator.clear_stats()
+                simulator.debug_mode(0)
+                f(x_nd, w_nd, y_nd)
+                stat2 = simulator.stats()
+                for k, v in stat1.items():
+                    if k != "uop_load_nbytes":
+                        assert stat1[k] == stat2[k]
             else:
                 f(x_nd, w_nd, y_nd)
 

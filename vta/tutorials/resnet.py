@@ -59,7 +59,7 @@ def process_image(image):
 # Takes in the graph runtime, and an image, and returns top result and time
 def classify(m, image):
     m.set_input('data', image)
-    timer = m.module.time_evaluator("run", ctx, number=1)
+    timer = m.module.time_evaluator("run", ctx, number=3)
     tcost = timer()
     tvm_output = m.get_output(0)
     top = np.argmax(tvm_output.asnumpy()[0])
@@ -69,19 +69,13 @@ def classify(m, image):
 # Helper function to compile the NNVM graph
 # Takes in a path to a graph file, params file, and device target
 # Returns the NNVM graph object, a compiled library object, and the params dict
-def generate_graph(graph_fn, params_fn, device="vta"):
+def generate_graph(graph_fn, params_fn, target):
     # Measure build start time
     build_start = time.time()
 
-    # Derive the TVM target
-    target = tvm.target.create("llvm -device={}".format(device))
-
     # Derive the LLVM compiler flags
-    # When targetting the Pynq, cross-compile to ARMv7 ISA
-    if env.TARGET == "sim":
-        target_host = "llvm"
-    elif env.TARGET == "pynq":
-        target_host = "llvm -mtriple=armv7-none-linux-gnueabihf -mcpu=cortex-a9 -mattr=+neon"
+    # When targetting the Pynq/Ultra-96, cross-compile to ARM ISA
+    target_host = env.target_host
 
     # Load the ResNet-18 graph and parameters
     sym = nnvm.graph.load_json(open(graph_fn).read())
@@ -108,12 +102,12 @@ def generate_graph(graph_fn, params_fn, device="vta"):
                 params=params, target_host=target_host)
         else:
             with vta.build_config():
+                print("target host: {}".format(target_host))
                 graph, lib, params = nnvm.compiler.build(
                     sym, target, shape_dict, dtype_dict,
                     params=params, target_host=target_host)
 
     # Save the compiled inference graph library
-    assert tvm.module.enabled("rpc")
     temp = util.tempdir()
     lib.save(temp.relpath("graphlib.o"))
 
@@ -152,10 +146,6 @@ for file in [categ_fn, graph_fn, params_fn]:
 # Read in ImageNet Categories
 synset = eval(open(os.path.join(data_dir, categ_fn)).read())
 
-# Download pre-tuned op parameters of conv2d for ARM CPU used in VTA
-autotvm.tophub.check_backend('vta')
-
-
 ######################################################################
 # Setup the Pynq Board's RPC Server
 # ---------------------------------
@@ -165,12 +155,16 @@ autotvm.tophub.check_backend('vta')
 reconfig_start = time.time()
 
 # We read the Pynq RPC host IP address and port number from the OS environment
-host = os.environ.get("VTA_PYNQ_RPC_HOST", "192.168.2.99")
-port = int(os.environ.get("VTA_PYNQ_RPC_PORT", "9091"))
+if env.TARGET == "pynq":
+    host = os.environ.get("VTA_PYNQ_RPC_HOST", "192.168.2.99")
+    port = int(os.environ.get("VTA_PYNQ_RPC_PORT", "9091"))
+elif env.TARGET == "ultra96":
+    host = os.environ.get("VTA_ULTRA96_RPC_HOST", "192.168.2.99")
+    port = int(os.environ.get("VTA_ULTRA96_RPC_PORT", "9091"))
 
 # We configure both the bitstream and the runtime system on the Pynq
 # to match the VTA configuration specified by the vta_config.json file.
-if env.TARGET == "pynq":
+if env.TARGET != "sim":
     # Make sure that TVM was compiled with RPC=1
     assert tvm.module.enabled("rpc")
     remote = rpc.connect(host, port)
@@ -197,17 +191,16 @@ elif env.TARGET == "sim":
 # ------------------------
 # Build the ResNet graph runtime, and configure the parameters.
 
-# Set ``device=vtacpu`` to run inference on the CPU
-# or ``device=vta`` to run inference on the FPGA.
-device = "vta"
+#target = tvm.target.arm_cpu(env.TARGET)   # run on arm cpu
+target = tvm.target.vta(env.TARGET)
 
 # Device context
-ctx = remote.ext_dev(0) if device == "vta" else remote.cpu(0)
+ctx = remote.context(str(target))
 
 # Build the graph runtime
 graph, lib, params = generate_graph(os.path.join(data_dir, graph_fn),
                                     os.path.join(data_dir, params_fn),
-                                    device)
+                                    target)
 m = graph_runtime.create(graph, lib, ctx)
 
 # Set the parameters
@@ -225,14 +218,14 @@ image_url = 'https://homes.cs.washington.edu/~moreau/media/vta/cat.jpg'
 response = requests.get(image_url)
 image = Image.open(BytesIO(response.content)).resize((224, 224))
 # Show Image
-plt.imshow(image)
-plt.show()
+# plt.imshow(image)
+# plt.show()
 # Set the input
 image = process_image(image)
 m.set_input('data', image)
 
 # Perform inference
-timer = m.module.time_evaluator("run", ctx, number=1)
+timer = m.module.time_evaluator("run", ctx, number=4)
 tcost = timer()
 
 # Get classification results
@@ -245,7 +238,7 @@ print("                     #2:", synset[top_categories[-2]])
 print("                     #3:", synset[top_categories[-3]])
 print("                     #4:", synset[top_categories[-4]])
 print("                     #5:", synset[top_categories[-5]])
-print("Performed inference in {0:.2f}s".format(tcost.mean))
+print("Performed inference in {0:.1f}ms".format(tcost.mean*1000.0))
 
 
 ######################################################################
