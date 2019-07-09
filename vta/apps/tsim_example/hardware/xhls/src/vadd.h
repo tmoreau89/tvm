@@ -10,7 +10,6 @@
 #include <hls_stream.h>
 
 void vadd(
-  int len,
   hls::stream<int> &a,
   hls::stream<int> &b);
 

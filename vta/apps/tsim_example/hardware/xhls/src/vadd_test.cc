@@ -38,7 +38,9 @@ PRAGMA_HLS(HLS stream depth=VECTOR_LEN variable=b_q)
   }
 
   // Invoke the vector add module
-  vadd(VECTOR_LEN, a_q, b_q);
+  for (int i = 0; i < VECTOR_LEN; i++) {
+    vadd(a_q, b_q);
+  }
 
   // Check the outputc
   for (int i = 0; i < VECTOR_LEN; i++) {
