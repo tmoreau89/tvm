@@ -38,23 +38,70 @@ class PkgConfig(object):
     """
     cfg_keys = [
         "TARGET",
-        "LOG_INP_WIDTH",
-        "LOG_WGT_WIDTH",
-        "LOG_ACC_WIDTH",
-        "LOG_BATCH",
-        "LOG_BLOCK",
-        "LOG_UOP_BUFF_SIZE",
-        "LOG_INP_BUFF_SIZE",
-        "LOG_WGT_BUFF_SIZE",
-        "LOG_ACC_BUFF_SIZE",
+        "INP_TYPE",
+        "WGT_TYPE",
+        "ACC_TYPE",
+        "BATCH",
+        "BLOCK",
+        "UOP_BUFF_SIZE",
+        "INP_BUFF_SIZE",
+        "WGT_BUFF_SIZE",
+        "ACC_BUFF_SIZE",
     ]
+
+    # Datatype white list
+    dtype_keys = [
+        "int8",
+        "int16",
+        "int32"
+    ]
+
+    # Datatype width map
+    dtype_width = {
+        "int8": 8,
+        "int16": 16,
+        "int32": 32,
+    }
 
     def __init__(self, cfg, proj_root):
 
-        # Derived parameters
-        cfg["LOG_BLOCK_IN"] = cfg["LOG_BLOCK"]
-        cfg["LOG_BLOCK_OUT"] = cfg["LOG_BLOCK"]
-        cfg["LOG_OUT_WIDTH"] = cfg["LOG_INP_WIDTH"]
+        def _is_power_of_two(num):
+            return num != 0 and ((num & (num - 1)) == 0)
+        
+        def _log2(num):
+            return num.bit_length() - 1
+
+        # Check parameters
+        assert cfg["INP_TYPE"] in self.dtype_keys
+        assert cfg["WGT_TYPE"] in self.dtype_keys
+        assert cfg["ACC_TYPE"] in self.dtype_keys
+        assert _is_power_of_two(cfg["BATCH"])
+        assert _is_power_of_two(cfg["BLOCK"])
+        assert _is_power_of_two(cfg["UOP_BUFF_SIZE"])
+        assert _is_power_of_two(cfg["INP_BUFF_SIZE"])
+        assert _is_power_of_two(cfg["WGT_BUFF_SIZE"])
+        assert _is_power_of_two(cfg["ACC_BUFF_SIZE"])
+
+        # Derive parameters
+        cfg["INP_WIDTH"] = self.dtype_width[cfg["INP_TYPE"]]
+        cfg["WGT_WIDTH"] = self.dtype_width[cfg["WGT_TYPE"]]
+        cfg["ACC_WIDTH"] = self.dtype_width[cfg["ACC_TYPE"]]
+        cfg["OUT_WIDTH"] = cfg["INP_WIDTH"]
+        cfg["BLOCK_IN"] = cfg["BLOCK"]
+        cfg["BLOCK_OUT"] = cfg["BLOCK"]
+
+        # Derive log of parameters
+        cfg["LOG_INP_WIDTH"] = _log2(cfg["INP_WIDTH"])
+        cfg["LOG_WGT_WIDTH"] = _log2(cfg["WGT_WIDTH"])
+        cfg["LOG_ACC_WIDTH"] = _log2(cfg["ACC_WIDTH"])
+        cfg["LOG_OUT_WIDTH"] = _log2(cfg["OUT_WIDTH"])
+        cfg["LOG_BATCH"] = _log2(cfg["BATCH"])
+        cfg["LOG_BLOCK_IN"] = _log2(cfg["BLOCK_IN"])
+        cfg["LOG_BLOCK_OUT"] = _log2(cfg["BLOCK_OUT"])
+        cfg["LOG_UOP_BUFF_SIZE"] = _log2(cfg["UOP_BUFF_SIZE"])
+        cfg["LOG_INP_BUFF_SIZE"] = _log2(cfg["INP_BUFF_SIZE"])
+        cfg["LOG_WGT_BUFF_SIZE"] = _log2(cfg["WGT_BUFF_SIZE"])
+        cfg["LOG_ACC_BUFF_SIZE"] = _log2(cfg["ACC_BUFF_SIZE"])
         cfg["LOG_OUT_BUFF_SIZE"] = (
             cfg["LOG_ACC_BUFF_SIZE"] +
             cfg["LOG_OUT_WIDTH"] -
@@ -88,8 +135,8 @@ class PkgConfig(object):
 
         # Derive bitstream config string.
         self.bitstream = "{}x{}_i{}w{}a{}_{}_{}_{}_{}".format(
-            (1 << cfg["LOG_BATCH"]),
-            (1 << cfg["LOG_BLOCK"]),
+            cfg["BATCH"],
+            cfg["BLOCK"],
             (1 << cfg["LOG_INP_WIDTH"]),
             (1 << cfg["LOG_WGT_WIDTH"]),
             (1 << cfg["LOG_ACC_WIDTH"]),

@@ -42,30 +42,30 @@ extern "C" {
 #define VTA_LOG_UOP_WIDTH 5
 /*! Micro Op data type width */
 #define VTA_UOP_WIDTH (1 << VTA_LOG_UOP_WIDTH)
-/*! Weight data type width */
-#define VTA_WGT_WIDTH (1 << VTA_LOG_WGT_WIDTH)
-/*! Input data type width */
-#define VTA_INP_WIDTH (1 << VTA_LOG_INP_WIDTH)
-/*! Output data type width */
-#define VTA_OUT_WIDTH (1 << VTA_LOG_OUT_WIDTH)
-/*! Accumulator data type width */
-#define VTA_ACC_WIDTH (1 << VTA_LOG_ACC_WIDTH)
+// /*! Weight data type width */
+// #define VTA_WGT_WIDTH (1 << VTA_LOG_WGT_WIDTH)
+// /*! Input data type width */
+// #define VTA_INP_WIDTH (1 << VTA_LOG_INP_WIDTH)
+// /*! Output data type width */
+// #define VTA_OUT_WIDTH (1 << VTA_LOG_OUT_WIDTH)
+// /*! Accumulator data type width */
+// #define VTA_ACC_WIDTH (1 << VTA_LOG_ACC_WIDTH)
 
-/*! Batch size (corresponds to A in (A,B)x(B,C) mat mult)*/
-#define VTA_BATCH (1 << VTA_LOG_BATCH)
-/*! Blocking factor of inner most loop (corresponds to B in (A,B)x(B,C) mat mult) */
-#define VTA_BLOCK_IN (1 << VTA_LOG_BLOCK_IN)
-/*! Blocking factor of the outer loop (corresponds to C in (A,B)x(B,C) mat mult) */
-#define VTA_BLOCK_OUT (1 << VTA_LOG_BLOCK_OUT)
+// /*! Batch size (corresponds to A in (A,B)x(B,C) mat mult)*/
+// #define VTA_BATCH (1 << VTA_LOG_BATCH)
+// /*! Blocking factor of inner most loop (corresponds to B in (A,B)x(B,C) mat mult) */
+// #define VTA_BLOCK_IN (1 << VTA_LOG_BLOCK_IN)
+// /*! Blocking factor of the outer loop (corresponds to C in (A,B)x(B,C) mat mult) */
+// #define VTA_BLOCK_OUT (1 << VTA_LOG_BLOCK_OUT)
 
-/*! On-chip micro-op buffer size in B */
-#define VTA_UOP_BUFF_SIZE (1 << VTA_LOG_UOP_BUFF_SIZE)
-/*! On-chip weight buffer size in B */
-#define VTA_WGT_BUFF_SIZE (1 << VTA_LOG_WGT_BUFF_SIZE)
-/*! On-chip activation buffer size in B */
-#define VTA_INP_BUFF_SIZE (1 << VTA_LOG_INP_BUFF_SIZE)
-/*! On-chip accumulator buffer size in B */
-#define VTA_ACC_BUFF_SIZE (1 << VTA_LOG_ACC_BUFF_SIZE)
+// /*! On-chip micro-op buffer size in B */
+// #define VTA_UOP_BUFF_SIZE (1 << VTA_LOG_UOP_BUFF_SIZE)
+// /*! On-chip weight buffer size in B */
+// #define VTA_WGT_BUFF_SIZE (1 << VTA_LOG_WGT_BUFF_SIZE)
+// /*! On-chip activation buffer size in B */
+// #define VTA_INP_BUFF_SIZE (1 << VTA_LOG_INP_BUFF_SIZE)
+// /*! On-chip accumulator buffer size in B */
+// #define VTA_ACC_BUFF_SIZE (1 << VTA_LOG_ACC_BUFF_SIZE)
 
 /*! Input vector size in bits */
 #define VTA_INP_MATRIX_WIDTH (VTA_INP_WIDTH * VTA_BATCH * VTA_BLOCK_IN)
