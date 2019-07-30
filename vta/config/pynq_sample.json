@@ -1,9 +1,9 @@
 {
   "TARGET" : "pynq",
   "HW_VER" : "0.0.1",
-  "INP_TYPE" : "int8",
-  "WGT_TYPE" : "int8",
-  "ACC_TYPE" : "int32",
+  "INP_DTYPE" : "int8",
+  "WGT_DTYPE" : "int8",
+  "ACC_DTYPE" : "int32",
   "BATCH" : 1,
   "BLOCK" : 16,
   "UOP_BUFF_SIZE" : 32768,

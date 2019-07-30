@@ -116,43 +116,47 @@ class Environment(object):
         # Produce the derived parameters and update dict
         self.pkg = self.pkg_config(cfg)
         self.__dict__.update(self.pkg.cfg_dict)
-        # data type width
-        self.INP_WIDTH = 1 << self.LOG_INP_WIDTH
-        self.WGT_WIDTH = 1 << self.LOG_WGT_WIDTH
-        self.ACC_WIDTH = 1 << self.LOG_ACC_WIDTH
-        self.OUT_WIDTH = 1 << self.LOG_OUT_WIDTH
-        # tensor intrinsic shape
-        self.BATCH = 1 << self.LOG_BATCH
-        self.BLOCK_IN = 1 << self.LOG_BLOCK_IN
-        self.BLOCK_OUT = 1 << self.LOG_BLOCK_OUT
-        # buffer size
-        self.UOP_BUFF_SIZE = 1 << self.LOG_UOP_BUFF_SIZE
-        self.INP_BUFF_SIZE = 1 << self.LOG_INP_BUFF_SIZE
-        self.WGT_BUFF_SIZE = 1 << self.LOG_WGT_BUFF_SIZE
-        self.ACC_BUFF_SIZE = 1 << self.LOG_ACC_BUFF_SIZE
-        self.OUT_BUFF_SIZE = 1 << self.LOG_OUT_BUFF_SIZE
+        # # data type width
+        # self.INP_WIDTH = 1 << self.LOG_INP_WIDTH
+        # self.WGT_WIDTH = 1 << self.LOG_WGT_WIDTH
+        # self.ACC_WIDTH = 1 << self.LOG_ACC_WIDTH
+        # self.OUT_WIDTH = 1 << self.LOG_OUT_WIDTH
+        # # tensor intrinsic shape
+        # self.BATCH = 1 << self.LOG_BATCH
+        # self.BLOCK_IN = 1 << self.LOG_BLOCK_IN
+        # self.BLOCK_OUT = 1 << self.LOG_BLOCK_OUT
+        # # buffer size
+        # self.UOP_BUFF_SIZE = 1 << self.LOG_UOP_BUFF_SIZE
+        # self.INP_BUFF_SIZE = 1 << self.LOG_INP_BUFF_SIZE
+        # self.WGT_BUFF_SIZE = 1 << self.LOG_WGT_BUFF_SIZE
+        # self.ACC_BUFF_SIZE = 1 << self.LOG_ACC_BUFF_SIZE
+        # self.OUT_BUFF_SIZE = 1 << self.LOG_OUT_BUFF_SIZE
         # bytes per buffer
-        self.INP_ELEM_BITS = (self.BATCH *
-                              self.BLOCK_IN *
-                              self.INP_WIDTH)
-        self.WGT_ELEM_BITS = (self.BLOCK_OUT *
-                              self.BLOCK_IN *
-                              self.WGT_WIDTH)
-        self.ACC_ELEM_BITS = (self.BATCH *
-                              self.BLOCK_OUT *
-                              self.ACC_WIDTH)
-        self.OUT_ELEM_BITS = (self.BATCH *
-                              self.BLOCK_OUT *
-                              self.OUT_WIDTH)
-        self.INP_ELEM_BYTES = self.INP_ELEM_BITS // 8
-        self.WGT_ELEM_BYTES = self.WGT_ELEM_BITS // 8
-        self.ACC_ELEM_BYTES = self.ACC_ELEM_BITS // 8
-        self.OUT_ELEM_BYTES = self.OUT_ELEM_BITS // 8
+        # self.INP_ELEM_BITS = (self.BATCH *
+        #                       self.BLOCK_IN *
+        #                       self.INP_WIDTH)
+        # self.WGT_ELEM_BITS = (self.BLOCK_OUT *
+        #                       self.BLOCK_IN *
+        #                       self.WGT_WIDTH)
+        # self.ACC_ELEM_BITS = (self.BATCH *
+        #                       self.BLOCK_OUT *
+        #                       self.ACC_WIDTH)
+        # self.OUT_ELEM_BITS = (self.BATCH *
+        #                       self.BLOCK_OUT *
+        #                       self.OUT_WIDTH)
+        # self.INP_ELEM_BYTES = self.INP_ELEM_BITS // 8
+        # self.WGT_ELEM_BYTES = self.WGT_ELEM_BITS // 8
+        # self.ACC_ELEM_BYTES = self.ACC_ELEM_BITS // 8
+        # self.OUT_ELEM_BYTES = self.OUT_ELEM_BITS // 8
         # dtypes
-        self.acc_dtype = "int%d" % self.ACC_WIDTH
-        self.inp_dtype = "int%d" % self.INP_WIDTH
-        self.wgt_dtype = "int%d" % self.WGT_WIDTH
-        self.out_dtype = "int%d" % self.OUT_WIDTH
+        # self.acc_dtype = "int%d" % self.ACC_WIDTH
+        # self.inp_dtype = "int%d" % self.INP_WIDTH
+        # self.wgt_dtype = "int%d" % self.WGT_WIDTH
+        # self.out_dtype = "int%d" % self.OUT_WIDTH
+        self.inp_dtype = self.DINP_TYPE
+        self.wgt_dtype = self.DWGT_TYPE
+        self.acc_dtype = self.DACC_TYPE
+        self.out_dtype = self.DOUT_TYPE
         # bistream name
         self.BITSTREAM = self.pkg.bitstream
         # model string

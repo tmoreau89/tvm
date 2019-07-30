@@ -38,9 +38,9 @@ class PkgConfig(object):
     """
     cfg_keys = [
         "TARGET",
-        "INP_TYPE",
-        "WGT_TYPE",
-        "ACC_TYPE",
+        "INP_DTYPE",
+        "WGT_DTYPE",
+        "ACC_DTYPE",
         "BATCH",
         "BLOCK",
         "UOP_BUFF_SIZE",
@@ -72,9 +72,9 @@ class PkgConfig(object):
             return num.bit_length() - 1
 
         # Check parameters
-        assert cfg["INP_TYPE"] in self.dtype_keys
-        assert cfg["WGT_TYPE"] in self.dtype_keys
-        assert cfg["ACC_TYPE"] in self.dtype_keys
+        assert cfg["INP_DTYPE"] in self.dtype_keys
+        assert cfg["WGT_DTYPE"] in self.dtype_keys
+        assert cfg["ACC_DTYPE"] in self.dtype_keys
         assert _is_power_of_two(cfg["BATCH"])
         assert _is_power_of_two(cfg["BLOCK"])
         assert _is_power_of_two(cfg["UOP_BUFF_SIZE"])
@@ -83,12 +83,16 @@ class PkgConfig(object):
         assert _is_power_of_two(cfg["ACC_BUFF_SIZE"])
 
         # Derive parameters
-        cfg["INP_WIDTH"] = self.dtype_width[cfg["INP_TYPE"]]
-        cfg["WGT_WIDTH"] = self.dtype_width[cfg["WGT_TYPE"]]
-        cfg["ACC_WIDTH"] = self.dtype_width[cfg["ACC_TYPE"]]
-        cfg["OUT_WIDTH"] = cfg["INP_WIDTH"]
+        cfg["OUT_DTYPE"] = cfg["INP_DTYPE"]
         cfg["BLOCK_IN"] = cfg["BLOCK"]
         cfg["BLOCK_OUT"] = cfg["BLOCK"]
+        cfg["INP_WIDTH"] = self.dtype_width[cfg["INP_DTYPE"]]
+        cfg["WGT_WIDTH"] = self.dtype_width[cfg["WGT_DTYPE"]]
+        cfg["ACC_WIDTH"] = self.dtype_width[cfg["ACC_DTYPE"]]
+        cfg["OUT_WIDTH"] = self.dtype_width[cfg["OUT_DTYPE"]]
+        cfg["OUT_BUFF_SIZE"] = (cfg["ACC_BUFF_SIZE"] *
+                                cfg["OUT_WIDTH"] //
+                                cfg["ACC_WIDTH"])
 
         # Derive log of parameters
         cfg["LOG_INP_WIDTH"] = _log2(cfg["INP_WIDTH"])
@@ -102,10 +106,25 @@ class PkgConfig(object):
         cfg["LOG_INP_BUFF_SIZE"] = _log2(cfg["INP_BUFF_SIZE"])
         cfg["LOG_WGT_BUFF_SIZE"] = _log2(cfg["WGT_BUFF_SIZE"])
         cfg["LOG_ACC_BUFF_SIZE"] = _log2(cfg["ACC_BUFF_SIZE"])
-        cfg["LOG_OUT_BUFF_SIZE"] = (
-            cfg["LOG_ACC_BUFF_SIZE"] +
-            cfg["LOG_OUT_WIDTH"] -
-            cfg["LOG_ACC_WIDTH"])
+        cfg["LOG_OUT_BUFF_SIZE"] = _log2(cfg["OUT_BUFF_SIZE"])
+
+        # Derive element bytes
+        cfg["INP_ELEM_BITS"] = (cfg["BATCH"] *
+                                cfg["BLOCK_IN"] *
+                                cfg["INP_WIDTH"])
+        cfg["WGT_ELEM_BITS"] = (cfg["BLOCK_OUT"] *
+                                cfg["BLOCK_IN"] *
+                                cfg["WGT_WIDTH"])
+        cfg["ACC_ELEM_BITS"] = (cfg["BATCH"] *
+                                cfg["BLOCK_OUT"] *
+                                cfg["ACC_WIDTH"])
+        cfg["OUT_ELEM_BITS"] = (cfg["BATCH"] *
+                                cfg["BLOCK_OUT"] *
+                                cfg["OUT_WIDTH"])
+        cfg["INP_ELEM_BYTES"] = cfg["INP_ELEM_BITS"] // 8
+        cfg["WGT_ELEM_BYTES"] = cfg["WGT_ELEM_BITS"] // 8
+        cfg["ACC_ELEM_BYTES"] = cfg["ACC_ELEM_BITS"] // 8
+        cfg["OUT_ELEM_BYTES"] = cfg["OUT_ELEM_BITS"] // 8
 
         # Update cfg now that we've extended it
         self.__dict__.update(cfg)
@@ -137,9 +156,9 @@ class PkgConfig(object):
         self.bitstream = "{}x{}_i{}w{}a{}_{}_{}_{}_{}".format(
             cfg["BATCH"],
             cfg["BLOCK"],
-            (1 << cfg["LOG_INP_WIDTH"]),
-            (1 << cfg["LOG_WGT_WIDTH"]),
-            (1 << cfg["LOG_ACC_WIDTH"]),
+            cfg["INP_WIDTH"],
+            cfg["WGT_WIDTH"],
+            cfg["ACC_WIDTH"],
             cfg["LOG_UOP_BUFF_SIZE"],
             cfg["LOG_INP_BUFF_SIZE"],
             cfg["LOG_WGT_BUFF_SIZE"],
@@ -217,37 +236,19 @@ class PkgConfig(object):
         # Bus width of a memory interface
         mem_bus_width = 1 << self.fpga_log_axi_bus_width
         # Input memory
-        inp_mem_bus_width = 1 << (cfg["LOG_INP_WIDTH"] + \
-                                  cfg["LOG_BATCH"] + \
-                                  cfg["LOG_BLOCK_IN"])
-        self.inp_mem_size = 1 << cfg["LOG_INP_BUFF_SIZE"]  # bytes
-        self.inp_mem_banks = (inp_mem_bus_width + \
-                              max_bus_width - 1) // \
-                              max_bus_width
-        self.inp_mem_width = min(inp_mem_bus_width, max_bus_width)
-        self.inp_mem_depth = self.inp_mem_size * 8 // inp_mem_bus_width
+        self.inp_mem_banks = cfg["INP_ELEM_BITS"] // max_bus_width
+        self.inp_mem_width = min(cfg["INP_ELEM_BITS"], max_bus_width)
+        self.inp_mem_depth = cfg["INP_BUFF_SIZE"] // cfg["INP_ELEM_BYTES"]
         self.inp_mem_axi_ratio = self.inp_mem_width // mem_bus_width
         # Weight memory
-        wgt_mem_bus_width = 1 << (cfg["LOG_WGT_WIDTH"] + \
-                                  cfg["LOG_BLOCK_IN"] + \
-                                  cfg["LOG_BLOCK_OUT"])
-        self.wgt_mem_size = 1 << cfg["LOG_WGT_BUFF_SIZE"]  # bytes
-        self.wgt_mem_banks = (wgt_mem_bus_width + \
-                              max_bus_width - 1) // \
-                              max_bus_width
-        self.wgt_mem_width = min(wgt_mem_bus_width, max_bus_width)
-        self.wgt_mem_depth = self.wgt_mem_size * 8 // wgt_mem_bus_width
+        self.wgt_mem_banks = cfg["WGT_ELEM_BITS"] // max_bus_width
+        self.wgt_mem_width = min(cfg["WGT_ELEM_BITS"], max_bus_width)
+        self.wgt_mem_depth = cfg["WGT_BUFF_SIZE"] // cfg["WGT_ELEM_BYTES"]
         self.wgt_mem_axi_ratio = self.wgt_mem_width // mem_bus_width
         # Output memory
-        out_mem_bus_width = 1 << (cfg["LOG_OUT_WIDTH"] + \
-                                  cfg["LOG_BATCH"] + \
-                                  cfg["LOG_BLOCK_OUT"])
-        self.out_mem_size = 1 << cfg["LOG_OUT_BUFF_SIZE"]  # bytes
-        self.out_mem_banks = (out_mem_bus_width + \
-                              max_bus_width - 1) // \
-                              max_bus_width
-        self.out_mem_width = min(out_mem_bus_width, max_bus_width)
-        self.out_mem_depth = self.out_mem_size * 8 // out_mem_bus_width
+        self.out_mem_banks = cfg["OUT_ELEM_BITS"] // max_bus_width
+        self.out_mem_width = min(cfg["OUT_ELEM_BITS"], max_bus_width)
+        self.out_mem_depth = cfg["OUT_BUFF_SIZE"] // cfg["OUT_ELEM_BYTES"]
         self.out_mem_axi_ratio = self.out_mem_width // mem_bus_width
 
         # Macro defs

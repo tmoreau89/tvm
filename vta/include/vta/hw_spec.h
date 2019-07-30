@@ -89,14 +89,14 @@ extern "C" {
 #define VTA_INS_ELEM_BYTES (VTA_INS_WIDTH / 8)
 /*! Size of uop buffer element in B*/
 #define VTA_UOP_ELEM_BYTES (VTA_UOP_WIDTH / 8)
-/*! Size of activation buffer element in B*/
-#define VTA_INP_ELEM_BYTES (VTA_INP_MATRIX_WIDTH / 8)
-/*! Size of weight buffer element in B*/
-#define VTA_WGT_ELEM_BYTES (VTA_WGT_MATRIX_WIDTH / 8)
-/*! Size of accumulator buffer element in B*/
-#define VTA_ACC_ELEM_BYTES (VTA_ACC_MATRIX_WIDTH / 8)
-/*! Size of output buffer element in B*/
-#define VTA_OUT_ELEM_BYTES (VTA_OUT_MATRIX_WIDTH / 8)
+// /*! Size of activation buffer element in B*/
+// #define VTA_INP_ELEM_BYTES (VTA_INP_MATRIX_WIDTH / 8)
+// /*! Size of weight buffer element in B*/
+// #define VTA_WGT_ELEM_BYTES (VTA_WGT_MATRIX_WIDTH / 8)
+// /*! Size of accumulator buffer element in B*/
+// #define VTA_ACC_ELEM_BYTES (VTA_ACC_MATRIX_WIDTH / 8)
+// /*! Size of output buffer element in B*/
+// #define VTA_OUT_ELEM_BYTES (VTA_OUT_MATRIX_WIDTH / 8)
 
 /*! On-chip micro-op buffer depth */
 #define VTA_UOP_BUFF_DEPTH (VTA_UOP_BUFF_SIZE / VTA_UOP_ELEM_BYTES)
