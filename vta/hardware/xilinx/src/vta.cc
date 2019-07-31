@@ -290,13 +290,13 @@ void gemm(
             // Initialize the accumulator values
             acc_T accum = a_tensor[b][oc];
             // Dot product sum
-            sum_T tmp = 0;
+            acc_T tmp = 0;
             // Inner matrix multiplication loop (input channel/feature)
             for (int ic = 0; ic < VTA_BLOCK_IN; ic++) {
               wgt_T w_elem = w_tensor[oc][ic];
               inp_T i_elem = i_tensor[b][ic];
-              mul_T prod_dsp = i_elem * w_elem;
-              tmp += (sum_T) prod_dsp;
+              acc_T prod_dsp = i_elem * w_elem;
+              tmp += (acc_T) prod_dsp;
             }
             // Update summation
             accum += (acc_T) tmp;

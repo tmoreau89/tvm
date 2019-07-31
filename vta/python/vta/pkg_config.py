@@ -61,15 +61,32 @@ class PkgConfig(object):
         "int8": 8,
         "int16": 16,
         "int32": 32,
+        "uint8": 8,
+        "uint16": 16,
+        "uint32": 32,
     }
 
     def __init__(self, cfg, proj_root):
 
+        UINT = 0
+        INT = 1
+
         def _is_power_of_two(num):
             return num != 0 and ((num & (num - 1)) == 0)
-        
+
         def _log2(num):
             return num.bit_length() - 1
+
+        def _get_type_class(dtype):
+            return UINT if dtype.startswith("uint") else \
+                   INT if dtype.startswith("int") else \
+                   -1
+
+        def _get_type_class_macros():
+            macros = []
+            macros.append("-DVTA_DTYPE_CLASS_UINT={}".format(UINT))
+            macros.append("-DVTA_DTYPE_CLASS_INT={}".format(INT))
+            return macros
 
         # Check parameters
         assert cfg["INP_DTYPE"] in self.dtype_keys
@@ -86,10 +103,29 @@ class PkgConfig(object):
         cfg["OUT_DTYPE"] = cfg["INP_DTYPE"]
         cfg["BLOCK_IN"] = cfg["BLOCK"]
         cfg["BLOCK_OUT"] = cfg["BLOCK"]
+
+        # Derive type information
+        cfg["INP_TYPE_CLASS"] = _get_type_class(cfg["INP_DTYPE"])
+        cfg["WGT_TYPE_CLASS"] = _get_type_class(cfg["WGT_DTYPE"])
+        cfg["ACC_TYPE_CLASS"] = _get_type_class(cfg["ACC_DTYPE"])
+        cfg["OUT_TYPE_CLASS"] = _get_type_class(cfg["OUT_DTYPE"])
         cfg["INP_WIDTH"] = self.dtype_width[cfg["INP_DTYPE"]]
         cfg["WGT_WIDTH"] = self.dtype_width[cfg["WGT_DTYPE"]]
         cfg["ACC_WIDTH"] = self.dtype_width[cfg["ACC_DTYPE"]]
         cfg["OUT_WIDTH"] = self.dtype_width[cfg["OUT_DTYPE"]]
+        # Type assertions: INP and WGT should both be int/uints
+        assert cfg["INP_TYPE_CLASS"] == UINT and cfg["WGT_TYPE_CLASS"] == UINT or \
+               cfg["INP_TYPE_CLASS"] == INT and cfg["WGT_TYPE_CLASS"] == UINT or \
+               cfg["INP_TYPE_CLASS"] == UINT and cfg["WGT_TYPE_CLASS"] == INT or \
+               cfg["INP_TYPE_CLASS"] == INT and cfg["WGT_TYPE_CLASS"] == INT
+        # Type assertions: ACC is INT then one of "INP" and "WGT" are INT
+        #                  ACC is UINT then both "INP" and "WGT" are UINT
+        assert cfg["ACC_TYPE_CLASS"] == INT and (cfg["INP_TYPE_CLASS"] == INT or \
+                                                 cfg["WGT_TYPE_CLASS"] == INT) or \
+               cfg["ACC_TYPE_CLASS"] == UINT and (cfg["INP_TYPE_CLASS"] == UINT and \
+                                                  cfg["WGT_TYPE_CLASS"] == UINT)
+
+        # Buffer size derivation
         cfg["OUT_BUFF_SIZE"] = (cfg["ACC_BUFF_SIZE"] *
                                 cfg["OUT_WIDTH"] //
                                 cfg["ACC_WIDTH"])
@@ -108,7 +144,7 @@ class PkgConfig(object):
         cfg["LOG_ACC_BUFF_SIZE"] = _log2(cfg["ACC_BUFF_SIZE"])
         cfg["LOG_OUT_BUFF_SIZE"] = _log2(cfg["OUT_BUFF_SIZE"])
 
-        # Derive element bytes
+        # Derive element size in bits/bytes
         cfg["INP_ELEM_BITS"] = (cfg["BATCH"] *
                                 cfg["BLOCK_IN"] *
                                 cfg["INP_WIDTH"])
@@ -288,6 +324,8 @@ class PkgConfig(object):
             self.macro_defs.append("-DVTA_COHERENT_ACCESSES=true")
         else:
             self.macro_defs.append("-DVTA_COHERENT_ACCESSES=false")
+        # Data type class
+        self.macro_defs += _get_type_class_macros()
 
     @property
     def cflags(self):
