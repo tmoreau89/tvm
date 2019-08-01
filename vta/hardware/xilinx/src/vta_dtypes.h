@@ -25,6 +25,7 @@
 #define VTA_VTA_DTYPES_H_
 
 #include <ap_int.h>
+#include <math.h>
 
 /* \typedef bus_T memory bus datatype*/
 typedef ap_uint<VTA_BUS_WIDTH> bus_T;
@@ -38,6 +39,12 @@ typedef ap_uint<VTA_UOP_WIDTH> uop_T;
 #elif VTA_INP_TYPE_CLASS == VTA_DTYPE_CLASS_INT
     /* \typedef inp_T Input datatype*/
     typedef ap_int<VTA_INP_WIDTH> inp_T;
+#elif VTA_INP_TYPE_CLASS == VTA_DTYPE_CLASS_HP16
+    /* \typedef inp_T Input datatype*/
+    typedef half inp_T;
+#elif VTA_INP_TYPE_CLASS == VTA_DTYPE_CLASS_FP32
+    /* \typedef inp_T Input datatype*/
+    typedef float inp_T;
 #endif
 
 #if VTA_WGT_TYPE_CLASS == VTA_DTYPE_CLASS_UINT
@@ -46,6 +53,12 @@ typedef ap_uint<VTA_UOP_WIDTH> uop_T;
 #elif VTA_WGT_TYPE_CLASS == VTA_DTYPE_CLASS_INT
     /* \typedef wgt_T Weight datatype*/
     typedef ap_int<VTA_WGT_WIDTH> wgt_T;
+#elif VTA_WGT_TYPE_CLASS == VTA_DTYPE_CLASS_HP16
+    /* \typedef wgt_T Weight datatype*/
+    typedef half wgt_T;
+#elif VTA_WGT_TYPE_CLASS == VTA_DTYPE_CLASS_FP32
+    /* \typedef wgt_T Weight datatype*/
+    typedef float wgt_T;
 #endif
 
 #if VTA_ACC_TYPE_CLASS == VTA_DTYPE_CLASS_UINT
@@ -54,6 +67,12 @@ typedef ap_uint<VTA_UOP_WIDTH> uop_T;
 #elif VTA_ACC_TYPE_CLASS == VTA_DTYPE_CLASS_INT
     /* \typedef acc_T Accumulator datatype*/
     typedef ap_int<VTA_ACC_WIDTH> acc_T;
+#elif VTA_ACC_TYPE_CLASS == VTA_DTYPE_CLASS_HP16
+    /* \typedef acc_T Accumulator datatype*/
+    typedef half acc_T;
+#elif VTA_ACC_TYPE_CLASS == VTA_DTYPE_CLASS_FP32
+    /* \typedef acc_T Accumulator datatype*/
+    typedef float acc_T;
 #endif
 
 #if VTA_OUT_TYPE_CLASS == VTA_DTYPE_CLASS_UINT
@@ -62,6 +81,12 @@ typedef ap_uint<VTA_UOP_WIDTH> uop_T;
 #elif VTA_OUT_TYPE_CLASS == VTA_DTYPE_CLASS_INT
     /* \typedef out_T Output datatype*/
     typedef ap_int<VTA_OUT_WIDTH> out_T;
+#elif VTA_OUT_TYPE_CLASS == VTA_DTYPE_CLASS_HP16
+    /* \typedef out_T Output datatype*/
+    typedef half out_T;
+#elif VTA_OUT_TYPE_CLASS == VTA_DTYPE_CLASS_FP32
+    /* \typedef out_T Output datatype*/
+    typedef float out_T;
 #endif
 
 /* \typedef uop_idx_T Micro-op SRAM index datatype*/

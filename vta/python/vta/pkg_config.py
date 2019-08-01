@@ -53,7 +53,12 @@ class PkgConfig(object):
     dtype_keys = [
         "int8",
         "int16",
-        "int32"
+        "int32",
+        "uint8",
+        "uint16",
+        "uint32",
+        "hp16",
+        "fp32"
     ]
 
     # Datatype width map
@@ -64,12 +69,16 @@ class PkgConfig(object):
         "uint8": 8,
         "uint16": 16,
         "uint32": 32,
+        "hp16": 16,
+        "fp32": 32
     }
 
     def __init__(self, cfg, proj_root):
 
         UINT = 0
         INT = 1
+        HP16 = 2
+        FP32 = 3
 
         def _is_power_of_two(num):
             return num != 0 and ((num & (num - 1)) == 0)
@@ -80,12 +89,16 @@ class PkgConfig(object):
         def _get_type_class(dtype):
             return UINT if dtype.startswith("uint") else \
                    INT if dtype.startswith("int") else \
+                   HP16 if dtype == "hp16" else \
+                   FP32 if dtype == "fp32" else \
                    -1
 
         def _get_type_class_macros():
             macros = []
             macros.append("-DVTA_DTYPE_CLASS_UINT={}".format(UINT))
             macros.append("-DVTA_DTYPE_CLASS_INT={}".format(INT))
+            macros.append("-DVTA_DTYPE_CLASS_HP16={}".format(HP16))
+            macros.append("-DVTA_DTYPE_CLASS_FP32={}".format(FP32))
             return macros
 
         # Check parameters
@@ -113,17 +126,31 @@ class PkgConfig(object):
         cfg["WGT_WIDTH"] = self.dtype_width[cfg["WGT_DTYPE"]]
         cfg["ACC_WIDTH"] = self.dtype_width[cfg["ACC_DTYPE"]]
         cfg["OUT_WIDTH"] = self.dtype_width[cfg["OUT_DTYPE"]]
-        # Type assertions: INP and WGT should both be int/uints
+        # Type assertions: INP and WGT should both be int/uints or both hp16
         assert cfg["INP_TYPE_CLASS"] == UINT and cfg["WGT_TYPE_CLASS"] == UINT or \
                cfg["INP_TYPE_CLASS"] == INT and cfg["WGT_TYPE_CLASS"] == UINT or \
                cfg["INP_TYPE_CLASS"] == UINT and cfg["WGT_TYPE_CLASS"] == INT or \
-               cfg["INP_TYPE_CLASS"] == INT and cfg["WGT_TYPE_CLASS"] == INT
-        # Type assertions: ACC is INT then one of "INP" and "WGT" are INT
-        #                  ACC is UINT then both "INP" and "WGT" are UINT
+               cfg["INP_TYPE_CLASS"] == INT and cfg["WGT_TYPE_CLASS"] == INT or \
+               cfg["INP_TYPE_CLASS"] == HP16 and cfg["WGT_TYPE_CLASS"] == HP16
+        # Type assertions: ACC is INT then one of "INP" and "WGT" are INT or
+        #                  ACC is UINT then both "INP" and "WGT" are UINT or
+        #                  ACC is FP32 then both "INP" and "WGT" are FP32 or
+        #                  ACC is FP32 then both "INP" and "WGT" are HP16 or
+        #                  ACC is HP16 then both "INP" and "WGT" are HP16 or
         assert cfg["ACC_TYPE_CLASS"] == INT and (cfg["INP_TYPE_CLASS"] == INT or \
-                                                 cfg["WGT_TYPE_CLASS"] == INT) or \
+                                                 cfg["WGT_TYPE_CLASS"] == INT) \
+               or \
                cfg["ACC_TYPE_CLASS"] == UINT and (cfg["INP_TYPE_CLASS"] == UINT and \
-                                                  cfg["WGT_TYPE_CLASS"] == UINT)
+                                                  cfg["WGT_TYPE_CLASS"] == UINT) \
+               or \
+               cfg["ACC_TYPE_CLASS"] == FP32 and (cfg["INP_TYPE_CLASS"] == FP32 and \
+                                                  cfg["WGT_TYPE_CLASS"] == FP32) \
+               or \
+               cfg["ACC_TYPE_CLASS"] == FP32 and (cfg["INP_TYPE_CLASS"] == HP16 and \
+                                                  cfg["WGT_TYPE_CLASS"] == HP16) \
+               or \
+               cfg["ACC_TYPE_CLASS"] == HP16 and (cfg["INP_TYPE_CLASS"] == HP16 and \
+                                                  cfg["WGT_TYPE_CLASS"] == HP16)
 
         # Buffer size derivation
         cfg["OUT_BUFF_SIZE"] = (cfg["ACC_BUFF_SIZE"] *
@@ -189,12 +216,12 @@ class PkgConfig(object):
             self.ldflags = []
 
         # Derive bitstream config string.
-        self.bitstream = "{}x{}_i{}w{}a{}_{}_{}_{}_{}".format(
+        self.bitstream = "{}x{}_{}_{}_{}_{}_{}_{}_{}".format(
             cfg["BATCH"],
             cfg["BLOCK"],
-            cfg["INP_WIDTH"],
-            cfg["WGT_WIDTH"],
-            cfg["ACC_WIDTH"],
+            cfg["INP_DTYPE"],
+            cfg["WGT_DTYPE"],
+            cfg["ACC_DTYPE"],
             cfg["LOG_UOP_BUFF_SIZE"],
             cfg["LOG_INP_BUFF_SIZE"],
             cfg["LOG_WGT_BUFF_SIZE"],
