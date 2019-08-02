@@ -28,6 +28,30 @@
 
 #include "vta.h"
 
+template <typename T, int W>
+T convert_from_uint(ap_uint<W> d) {
+#pragma HLS INLINE
+
+#ifdef VTA_DTYPE_IEEE
+  fp_struct<T> converter = fp_struct<T>(d);
+  return static_cast<T>(converter.to_ieee());
+#else
+  return static_cast<T>(d);
+#endif
+}
+
+template <typename T, int W>
+ap_uint<W> convert_to_uint(T d) {
+#pragma HLS INLINE
+
+#ifdef VTA_DTYPE_IEEE
+  fp_struct<T> converter = fp_struct<T>(d);
+  return (ap_uint<W>) converter.data();
+#else
+  return (ap_uint<W>) d;
+#endif
+}
+
 template <typename DATA_T, int MAT_AXI_RATIO>
 void reset_mem(
   memop_sram_T &sram_idx,
@@ -100,13 +124,14 @@ void read_tensor(
   NARROW_T dst[Y_DIM][X_DIM]) {
 #pragma HLS INLINE
 
-  // Read in weight tensor
   for (int p = 0; p < NARROW_W * Y_DIM * X_DIM / WIDE_W; p++) {
     WIDE_T packet = src[idx][p];
     for (int w = 0; w < (WIDE_W / NARROW_W); w++) {
       int x = (p * (WIDE_W / NARROW_W) + w) / X_DIM;
       int y = (p * (WIDE_W / NARROW_W) + w) % X_DIM;
-      dst[x][y] = (NARROW_T) packet.range((w + 1) * NARROW_W - 1, w * NARROW_W);
+      ap_uint<NARROW_W> elem = packet.range((w + 1) * NARROW_W - 1, w * NARROW_W);
+      dst[x][y] = \
+          convert_from_uint<NARROW_T, NARROW_W>(elem);
     }
   }
 }
@@ -123,7 +148,8 @@ void write_tensor(
     for (int w = 0; w < (WIDE_W / NARROW_W); w++) {
       int x = (p * (WIDE_W / NARROW_W) + w) / X_DIM;
       int y = (p * (WIDE_W / NARROW_W) + w) % X_DIM;
-      packet.range((w + 1) * NARROW_W - 1, w * NARROW_W) = src[x][y];
+      packet.range((w + 1) * NARROW_W - 1, w * NARROW_W) = \
+          convert_to_uint<NARROW_T, NARROW_W>(src[x][y]);
     }
     dst[idx][p] = packet;
   }
@@ -262,15 +288,13 @@ void gemm(
       READ_GEMM_UOP: for (int upc = insn.uop_bgn; upc < insn.uop_end; upc++) {
 #pragma HLS PIPELINE II = 1
         // Read micro-op fields
-        uop_T uop = uop_mem[upc];
+        uop_T raw_uop = uop_mem[upc];
+        VTAUop uop = *((VTAUop *) &raw_uop);
 
         // Decode indices
-        acc_idx_T dst_idx =
-            uop.range(VTA_UOP_GEM_0_1, VTA_UOP_GEM_0_0) + dst_offset_in;
-        inp_idx_T src_idx =
-            uop.range(VTA_UOP_GEM_1_1, VTA_UOP_GEM_1_0) + src_offset_in;
-        wgt_idx_T wgt_idx =
-            uop.range(VTA_UOP_GEM_2_1, VTA_UOP_GEM_2_0) + wgt_offset_in;
+        acc_idx_T dst_idx = uop.dst_idx + dst_offset_in;
+        inp_idx_T src_idx = uop.src_idx + src_offset_in;
+        wgt_idx_T wgt_idx = uop.wgt_idx + wgt_offset_in;
 
         // Read in weight tensor
         wgt_T w_tensor[VTA_BLOCK_OUT][VTA_BLOCK_IN];
@@ -289,21 +313,16 @@ void gemm(
           for (int oc = 0; oc < VTA_BLOCK_OUT; oc++) {
             // Initialize the accumulator values
             acc_T accum = a_tensor[b][oc];
-            // Dot product sum
-            acc_T tmp = 0;
             // Inner matrix multiplication loop (input channel/feature)
             for (int ic = 0; ic < VTA_BLOCK_IN; ic++) {
               wgt_T w_elem = w_tensor[oc][ic];
               inp_T i_elem = i_tensor[b][ic];
-              acc_T prod_dsp = i_elem * w_elem;
-              tmp += (acc_T) prod_dsp;
+              accum += (acc_T) i_elem * w_elem;
             }
-            // Update summation
-            accum += (acc_T) tmp;
             // Write back result acc_mem
             a_tensor[b][oc] = insn.reset_reg ? (acc_T) 0 : accum;
             // And output vector
-            o_tensor[b][oc] = (out_T) accum.range(VTA_OUT_WIDTH - 1, 0);
+            o_tensor[b][oc] = static_cast<out_T>(accum);
           }
         }
 
@@ -350,13 +369,12 @@ void alu(
       READ_ALU_UOP: for (int upc = insn.uop_bgn; upc < insn.uop_end; upc++) {
 #pragma HLS PIPELINE II = 2
         // Read micro-op fields
-        uop_T uop = uop_mem[upc];
+        uop_T raw_uop = uop_mem[upc];
+        VTAUop uop = *((VTAUop *) &raw_uop);
 
         // Decode
-        acc_idx_T dst_idx =
-            uop.range(VTA_UOP_ALU_0_1, VTA_UOP_ALU_0_0) + dst_offset_in;
-        acc_idx_T src_idx =
-            uop.range(VTA_UOP_ALU_1_1, VTA_UOP_ALU_1_0) + src_offset_in;
+        acc_idx_T dst_idx = uop.dst_idx + dst_offset_in;
+        acc_idx_T src_idx = uop.src_idx + src_offset_in;
 
         // Read in src tensor
         acc_T src_tensor[VTA_BATCH][VTA_BLOCK_OUT];
@@ -371,29 +389,33 @@ void alu(
         for (int i = 0; i < VTA_BATCH; i++) {
           for (int b = 0; b < VTA_BLOCK_OUT; b++) {
             // Read in operands
+            imm_T imm = convert_from_uint<imm_T, VTA_IMM_WIDTH>(insn.imm);
             acc_T src_0 = dst_tensor[i][b];
-            acc_T src_1 = insn.use_imm ? (acc_T) insn.imm : src_tensor[i][b];
+            acc_T src_1 = insn.use_imm ? static_cast<acc_T>(imm) : src_tensor[i][b];
+#ifdef VTA_DTYPE_INT
             aluop_shr_arg_T shft_by = src_1.range(VTA_SHR_ARG_BIT_WIDTH - 1, 0);
-            aluop_mul_arg_T mul_by = src_1.range(VTA_MUL_ARG_BIT_WIDTH - 1, 0);
+#endif
             if (insn.alu_opcode == VTA_ALU_OPCODE_MIN || insn.alu_opcode == VTA_ALU_OPCODE_MAX) {
               // Compute Min/Max
               acc_T mix_val = src_0 < src_1 ?
                   (insn.alu_opcode == VTA_ALU_OPCODE_MIN ? src_0 : src_1) :
                   (insn.alu_opcode == VTA_ALU_OPCODE_MIN ? src_1 : src_0);
               dst_tensor[i][b] = mix_val;
-              o_tensor[i][b] = (out_T) mix_val.range(VTA_OUT_WIDTH - 1, 0);
+              o_tensor[i][b] = static_cast<out_T>(mix_val);
             } else if (insn.alu_opcode == VTA_ALU_OPCODE_ADD) {
               // Compute Sum
-              acc_T add_val =
-                  src_0.range(VTA_ACC_WIDTH - 1, 0) + src_1.range(VTA_ACC_WIDTH - 1, 0);
+              acc_T add_val = src_0 + src_1;
               dst_tensor[i][b] = add_val;
-              o_tensor[i][b] = (out_T) add_val.range(VTA_OUT_WIDTH - 1, 0);
-            } else if (insn.alu_opcode == VTA_ALU_OPCODE_SHR) {
+              o_tensor[i][b] = static_cast<out_T>(add_val);
+            }
+#ifdef VTA_DTYPE_INT
+            else if (insn.alu_opcode == VTA_ALU_OPCODE_SHR) {
               // Compute Shift Right
               acc_T shr_val = src_0 >> shft_by;
               dst_tensor[i][b] = shr_val;
-              o_tensor[i][b] = (out_T) shr_val.range(VTA_OUT_WIDTH - 1, 0);
+              o_tensor[i][b] = static_cast<out_T>(shr_val);
             }
+#endif
           }
         }
 

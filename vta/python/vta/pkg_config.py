@@ -99,6 +99,10 @@ class PkgConfig(object):
             macros.append("-DVTA_DTYPE_CLASS_INT={}".format(INT))
             macros.append("-DVTA_DTYPE_CLASS_HP16={}".format(HP16))
             macros.append("-DVTA_DTYPE_CLASS_FP32={}".format(FP32))
+            if _get_type_class(cfg["INP_DTYPE"]) == UINT or _get_type_class(cfg["INP_DTYPE"]) == INT:
+                 macros.append("-DVTA_DTYPE_INT")
+            elif _get_type_class(cfg["INP_DTYPE"]) == HP16 or _get_type_class(cfg["INP_DTYPE"]) == FP32:
+                 macros.append("-DVTA_DTYPE_IEEE")
             return macros
 
         # Check parameters

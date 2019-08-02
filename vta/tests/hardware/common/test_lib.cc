@@ -116,6 +116,28 @@ uint64_t vta(
 
 uint32_t globalSeed;
 
+template <typename T, int W>
+T convert_from_uint(ap_uint<W> d) {
+
+#ifdef VTA_DTYPE_IEEE
+  fp_struct<T> converter = fp_struct<T>(d);
+  return static_cast<T>(converter.to_ieee());
+#else
+  return static_cast<T>(d);
+#endif
+}
+
+template <typename T, int W>
+ap_uint<W> convert_to_uint(T d) {
+
+#ifdef VTA_DTYPE_IEEE
+  fp_struct<T> converter = fp_struct<T>(d);
+  return static_cast<ap_uint<W>>(converter.data());
+#else
+  return static_cast<ap_uint<W>>(d);
+#endif
+}
+
 const char* getOpcodeString(int opcode, bool use_imm) {
   // Returns string name
   if (opcode == VTA_ALU_OPCODE_MIN) {
@@ -139,9 +161,6 @@ const char* getOpcodeString(int opcode, bool use_imm) {
   } else if (opcode == VTA_ALU_OPCODE_SHR) {
     return "shr";
   }
-  // else if (opcode == VTA_ALU_OPCODE_MUL) {
-  //   return "mul";
-  // }
   return "unknown op";
 }
 
@@ -158,7 +177,8 @@ void packBuffer(DST_T *dst, SRC_T **src, int y_size, int x_size, int y_block, in
       for (int k = 0; k < y_block; k++) {
         for (int l = 0; l < x_block; l++) {
           int block_idx = l + k * x_block;
-          tmp |= (src[i * y_block + k][j * x_block + l] & mask) << ((block_idx % ratio) * SRC_T_WIDTH);
+          ap_uint<SRC_T_WIDTH> val = convert_to_uint<SRC_T, SRC_T_WIDTH>(src[i * y_block + k][j * x_block + l]);
+          tmp |= (val & mask) << ((block_idx % ratio) * SRC_T_WIDTH);
           // When tmp is packed, write to destination array
           if (block_idx % ratio == ratio - 1) {
             dst[buffer_idx++] = tmp;
@@ -181,7 +201,8 @@ void unpackBuffer(DST_T **dst, SRC_T *src, int y_size, int x_size, int y_block, 
       for (int k = 0; k < y_block; k++) {
         for (int l = 0; l < x_block; l++) {
           int block_idx = l + k * x_block;
-          dst[i * y_block + k][j * x_block + l] = (src[buffer_idx] >> ((block_idx % ratio) * DST_T_WIDTH)) & mask;
+          SRC_T val ((src[buffer_idx] >> ((block_idx % ratio) * DST_T_WIDTH)) & mask);
+          dst[i * y_block + k][j * x_block + l] = convert_from_uint<DST_T, DST_T_WIDTH>(val);
           if (block_idx % ratio == ratio - 1) {
             buffer_idx++;
           }
@@ -201,7 +222,8 @@ T ** allocInit2dArray(int rows, int cols) {
   // Init
   for (int i = 0; i < rows; i++) {
     for (int j = 0; j < cols; j++) {
-      array[i][j] = static_cast<T>(rand_r(&globalSeed));
+      // TODO(tmoreau89) make this type specific
+      array[i][j] = static_cast<T>((float)rand() / (float)(RAND_MAX) * 16 - 8);
     }
   }
   return array;
@@ -729,23 +751,8 @@ int alu_test(int opcode, bool use_imm, int batch, int vector_size, bool uop_comp
   // Immediate values
   acc_T *immediate = static_cast<acc_T *>(malloc(sizeof(acc_T) * batch / VTA_BATCH));
   for (int b = 0; b < batch / VTA_BATCH; b++) {
-    if (opcode == VTA_ALU_OPCODE_MIN) {
-      immediate[b] = static_cast<acc_T>(
-          rand_r(&globalSeed) % (1LL << (VTA_ALUOP_IMM_BIT_WIDTH - 1)) - (1LL << (VTA_ALUOP_IMM_BIT_WIDTH - 2)));
-    } else if (opcode == VTA_ALU_OPCODE_MAX) {
-      immediate[b] = static_cast<acc_T>(
-          rand_r(&globalSeed) % (1LL << (VTA_ALUOP_IMM_BIT_WIDTH - 1)) - (1LL << (VTA_ALUOP_IMM_BIT_WIDTH - 2)));
-    } else if (opcode == VTA_ALU_OPCODE_ADD) {
-      immediate[b] = static_cast<acc_T>(
-          rand_r(&globalSeed) % (1LL << (VTA_ALUOP_IMM_BIT_WIDTH - 1)) - (1LL << (VTA_ALUOP_IMM_BIT_WIDTH - 2)));
-    } else if (opcode == VTA_ALU_OPCODE_SHR) {
-      immediate[b] = static_cast<acc_T>(
-          rand_r(&globalSeed) % (1LL << (VTA_SHR_ARG_BIT_WIDTH - 1)) - (1LL << (VTA_SHR_ARG_BIT_WIDTH - 2)));
-    }
-    // else if (opcode == VTA_ALU_OPCODE_MUL) {
-    //   immediate[b] = static_cast<acc_T>(
-    //       rand_r(&globalSeed) % (1LL << (VTA_MUL_ARG_BIT_WIDTH - 1)) - (1LL << (VTA_MUL_ARG_BIT_WIDTH - 2)));
-    // }
+    // TODO(tmoreau89) make this type/op specific
+    immediate[b] = static_cast<acc_T>((float)rand() / (float)(RAND_MAX) * 8 - 4);
   }
 
   // Initialize instructions
@@ -773,7 +780,7 @@ int alu_test(int opcode, bool use_imm, int batch, int vector_size, bool uop_comp
         opcode,                            // opcode
         tx_size,                           // vector size
         use_imm,                           // use imm
-        immediate[b / VTA_BATCH],          // imm
+        convert_to_uint<acc_T, VTA_ACC_WIDTH>(immediate[b / VTA_BATCH]), // imm
         uop_compression,                   // uop compression
         0,                                 // pop prev dep
         0,                                 // pop next dep
@@ -808,19 +815,8 @@ int alu_test(int opcode, bool use_imm, int batch, int vector_size, bool uop_comp
   acc_T **inputs = alloc2dArray<acc_T>(batch, vector_size * input_sets);
   for (int i = 0; i < batch; i++) {
     for (int j = 0; j < vector_size * input_sets; j++) {
-      if (opcode == VTA_ALU_OPCODE_MIN) {
-        inputs[i][j] = static_cast<acc_T>(
-            rand_r(&globalSeed) % (1LL << (VTA_INP_WIDTH - 1)) - (1LL << (VTA_INP_WIDTH - 2)));
-      } else if (opcode == VTA_ALU_OPCODE_MAX) {
-        inputs[i][j] = static_cast<acc_T>(
-            rand_r(&globalSeed) % (1LL << (VTA_INP_WIDTH - 1)) - (1LL << (VTA_INP_WIDTH - 2)));
-      } else if (opcode == VTA_ALU_OPCODE_ADD) {
-        inputs[i][j] = static_cast<acc_T>(
-            rand_r(&globalSeed) % (1LL << (VTA_INP_WIDTH - 2)) - (1LL << (VTA_INP_WIDTH - 3)));
-      } else if (opcode == VTA_ALU_OPCODE_SHR) {
-        inputs[i][j] = static_cast<acc_T>(
-            rand_r(&globalSeed) % (1LL << (VTA_SHR_ARG_BIT_WIDTH - 1)) - (1LL << (VTA_SHR_ARG_BIT_WIDTH - 2)));
-      }
+      // TODO(tmoreau89) make this type/op specific
+      inputs[i][j] = static_cast<acc_T>((float)rand() / (float)(RAND_MAX) * 16 - 8);
     }
   }
 
@@ -849,7 +845,9 @@ int alu_test(int opcode, bool use_imm, int batch, int vector_size, bool uop_comp
         } else {
           out_val = inputs[i][j] + imm_val;
         }
-      } else if (opcode == VTA_ALU_OPCODE_SHR) {
+      }
+#ifdef VTA_DTYPE_INT
+      else if (opcode == VTA_ALU_OPCODE_SHR) {
         if (!use_imm) {
           if (src_val >= 0) {
             out_val = inputs[i][j] >> src_val;
@@ -864,7 +862,8 @@ int alu_test(int opcode, bool use_imm, int batch, int vector_size, bool uop_comp
           }
         }
       }
-      outputs_ref[i][j] = (out_T) out_val;
+#endif
+      outputs_ref[i][j] = static_cast<out_T>(out_val);
     }
   }
 
@@ -1113,7 +1112,7 @@ int blocked_gemm_test(int batch, int channels, int block, bool uop_compression,
         sum += (acc_T) (inputs[i][k] * weights[j][k]);
       }
       // Set
-      outputs_ref[i][j] = (out_T) sum;
+      outputs_ref[i][j] = static_cast<out_T>(sum);
     }
   }
 
@@ -1343,10 +1342,10 @@ int gemm_test(int batch, int in_channels, int out_channels, bool uop_compression
     for (int j = 0; j < out_channels; j++) {
       acc_T sum = biases[i][j];
       for (int k = 0; k < in_channels; k++) {
-        sum += (acc_T) (inputs[i][k] * weights[j][k]);
+        sum += inputs[i][k] * weights[j][k];
       }
       // Set
-      outputs_ref[i][j] = (out_T) sum;
+      outputs_ref[i][j] = static_cast<out_T>(sum);
     }
   }
 

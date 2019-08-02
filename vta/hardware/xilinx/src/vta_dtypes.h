@@ -64,15 +64,23 @@ typedef ap_uint<VTA_UOP_WIDTH> uop_T;
 #if VTA_ACC_TYPE_CLASS == VTA_DTYPE_CLASS_UINT
     /* \typedef acc_T Accumulator datatype*/
     typedef ap_uint<VTA_ACC_WIDTH> acc_T;
+    /* \typedef imm_T ALU operation immediate datatype*/
+    typedef ap_uint<VTA_IMM_WIDTH> imm_T;
 #elif VTA_ACC_TYPE_CLASS == VTA_DTYPE_CLASS_INT
     /* \typedef acc_T Accumulator datatype*/
     typedef ap_int<VTA_ACC_WIDTH> acc_T;
+    /* \typedef imm_T ALU operation immediate datatype*/
+    typedef ap_int<VTA_IMM_WIDTH> imm_T;
 #elif VTA_ACC_TYPE_CLASS == VTA_DTYPE_CLASS_HP16
     /* \typedef acc_T Accumulator datatype*/
     typedef half acc_T;
-#elif VTA_ACC_TYPE_CLASS == VTA_DTYPE_CLASS_FP32
+    /* \typedef imm_T ALU operation immediate datatype*/
+    typedef half imm_T;
+#elif VTA_ACC_TYPE_CLASS == VTA_DTYPE_CLASS_FP32 / 2
     /* \typedef acc_T Accumulator datatype*/
     typedef float acc_T;
+    /* \typedef imm_T ALU operation immediate datatype*/
+    typedef half imm_T;
 #endif
 
 #if VTA_OUT_TYPE_CLASS == VTA_DTYPE_CLASS_UINT
@@ -131,13 +139,7 @@ typedef ap_uint<VTA_MEMOP_PAD_BIT_WIDTH> memop_pad_T;
 /* \typedef aluop_opcode_T ALU operation opcode datatype*/
 typedef ap_uint<VTA_ALU_OPCODE_BIT_WIDTH> aluop_opcode_T;
 
-/* \typedef aluop_imm_T ALU operation immediate datatype*/
-typedef ap_int<VTA_ALUOP_IMM_BIT_WIDTH> aluop_imm_T;
-
 /* \typedef aluop_shr_arg_T ALU operation shift right immediate datatype*/
 typedef ap_int<VTA_SHR_ARG_BIT_WIDTH> aluop_shr_arg_T;
-
-/* \typedef aluop_mul_arg_T ALU operation multiply datatype*/
-typedef ap_int<VTA_MUL_ARG_BIT_WIDTH> aluop_mul_arg_T;
 
 #endif  // VTA_VTA_DTYPES_H_

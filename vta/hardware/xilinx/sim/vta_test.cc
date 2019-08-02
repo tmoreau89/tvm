@@ -27,6 +27,8 @@
 #include <stdlib.h>
 #include <iostream>
 
+#include <utils/x_hls_utils.h>
+
 #include "../src/vta.h"
 #include "../../../tests/hardware/common/test_lib.h"
 
@@ -37,6 +39,11 @@ int main(void) {
 
     int status = 0;
 
+    printf("Micro-op is %db wide\n", sizeof(VTAUop)*8);
+    printf("Instruction is %db wide\n", sizeof(VTAInsn)*8);
+    assert(sizeof(VTAUop)*8 == VTA_UOP_WIDTH);
+    assert(sizeof(VTAInsn)*8 == VTA_INS_WIDTH);
+
     // Run ALU test (vector-scalar operators)
     status |= alu_test(VTA_ALU_OPCODE_MIN, true, VTA_BLOCK_OUT, 128, true);
     status |= alu_test(VTA_ALU_OPCODE_MIN, true, VTA_BLOCK_OUT, 128, false);
@@ -44,8 +51,6 @@ int main(void) {
     status |= alu_test(VTA_ALU_OPCODE_MAX, true, VTA_BLOCK_OUT, 128, false);
     status |= alu_test(VTA_ALU_OPCODE_ADD, true, VTA_BLOCK_OUT, 128, true);
     status |= alu_test(VTA_ALU_OPCODE_ADD, true, VTA_BLOCK_OUT, 128, false);
-    status |= alu_test(VTA_ALU_OPCODE_SHR, true, VTA_BLOCK_OUT, 128, true);
-    status |= alu_test(VTA_ALU_OPCODE_SHR, true, VTA_BLOCK_OUT, 128, false);
 
     // Run ALU test (vector-vector operators)
     status |= alu_test(VTA_ALU_OPCODE_MIN, false, VTA_BLOCK_OUT, 128, true);
@@ -54,8 +59,14 @@ int main(void) {
     status |= alu_test(VTA_ALU_OPCODE_MAX, false, VTA_BLOCK_OUT, 128, false);
     status |= alu_test(VTA_ALU_OPCODE_ADD, false, VTA_BLOCK_OUT, 128, true);
     status |= alu_test(VTA_ALU_OPCODE_ADD, false, VTA_BLOCK_OUT, 128, false);
+
+#ifdef VTA_DTYPE_INT
+    // Run Shifter test in INT mode only
+    status |= alu_test(VTA_ALU_OPCODE_SHR, true, VTA_BLOCK_OUT, 128, true);
+    status |= alu_test(VTA_ALU_OPCODE_SHR, true, VTA_BLOCK_OUT, 128, false);
     status |= alu_test(VTA_ALU_OPCODE_SHR, false, VTA_BLOCK_OUT, 128, true);
     status |= alu_test(VTA_ALU_OPCODE_SHR, false, VTA_BLOCK_OUT, 128, false);
+#endif
 
     // Run blocked GEMM test
     status |= blocked_gemm_test(256, 256, VTA_BLOCK_OUT*4, false, 2);

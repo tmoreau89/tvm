@@ -24,10 +24,12 @@
 #ifndef VTA_VTA_H_
 #define VTA_VTA_H_
 
+#include <assert.h>
+
 #include <ap_axi_sdata.h>
 #include <ap_int.h>
-#include <assert.h>
 #include <hls_stream.h>
+#include <utils/x_hls_utils.h>
 
 #include <vta/hw_spec.h>
 
