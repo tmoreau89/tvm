@@ -111,14 +111,16 @@ Target CreateTarget(const std::string& target_name,
       t->thread_warp_size = 16;
     }
   } else if (target_name == "metal" || target_name == "vulkan") {
-    if (target_name == "metal") {
-      t->device_type = kDLMetal;
-    } else {
-      t->device_type = kDLVulkan;
-    }
+    t->device_type = kDLMetal;
     t->keys_array.push_back(tir::StringImmNode::make(target_name));
     t->keys_array.push_back(tir::StringImmNode::make("gpu"));
     t->max_num_threads = 256;
+  } else if (target_name == "vulkan") {
+    t->device_type = kDLVulkan;
+    t->keys_array.push_back(tir::StringImmNode::make(target_name));
+    t->keys_array.push_back(tir::StringImmNode::make("gpu"));
+    t->max_num_threads = 256;
+    t->thread_warp_size = 64;
   } else if (target_name == "sdaccel") {
     t->device_type = kDLOpenCL;
     t->keys_array.push_back(tir::StringImmNode::make("sdaccel"));
@@ -326,6 +328,12 @@ Target mali(const std::vector<std::string>& options) {
 Target intel_graphics(const std::vector<std::string>& options) {
   return CreateTarget("opencl", MergeOptions(options, {
     "-device=intel_graphics"
+  }));
+}
+
+Target amd_apu(const std::vector<std::string>& options) {
+  return CreateTarget("vulkan", MergeOptions(options, {
+    "-device=bifrost"
   }));
 }
 

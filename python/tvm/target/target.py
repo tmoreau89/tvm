@@ -142,6 +142,22 @@ def rocm(model='unknown', options=None):
     return _ffi_api.TargetCreate("rocm", *opts)
 
 
+def amd_apu(model='unknown', options=None):
+    """Returns an AMD APU target.
+
+    Parameters
+    ----------
+    model: str
+        The model of this device
+    options : str or list of str
+        Additional options
+    """
+    # Use bifrost GPU template for the time being
+    opts = ["-device=bifrost", '-model=%s' % model]
+    opts = _merge_opts(["-model=%s" % model], options)
+    return _ffi_api.TargetCreate("vulkan", *opts)
+
+
 def mali(model='unknown', options=None):
     """Returns a ARM Mali GPU target.
 

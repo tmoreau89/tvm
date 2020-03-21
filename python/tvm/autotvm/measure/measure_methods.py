@@ -232,7 +232,7 @@ class RPCRunner(Runner):
     def get_build_kwargs(self):
         kwargs = {}
         if 'cuda' in self.task.target.keys or 'opencl' in self.task.target.keys or \
-           'rocm' in self.task.target.keys:
+           'rocm' in self.task.target.keys or 'vulkan' in self.task.target.keys:
             remote = request_remote(self.key, self.host, self.port)
             ctx = remote.context(str(self.task.target), 0)
             max_dims = ctx.max_thread_dimensions
@@ -482,7 +482,7 @@ def run_through_rpc(measure_input, build_result,
             # create empty arrays on the remote device and copy them once.
             # This can avoid some memory issues that make the measurement results unreliable.
             args = [nd.empty(x[0], dtype=x[1], ctx=ctx) for x in build_result.arg_info]
-            args = [nd.array(x, ctx=ctx) for x in args]
+            # args = [nd.array(x, ctx=ctx) for x in args]
             ctx.sync()
 
         costs = time_f(*args).results
