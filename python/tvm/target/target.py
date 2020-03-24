@@ -154,7 +154,7 @@ def amd_apu(model='unknown', options=None):
     """
     # Use bifrost GPU template for the time being
     opts = ["-device=bifrost", '-model=%s' % model]
-    opts = _merge_opts(["-model=%s" % model], options)
+    opts = _merge_opts(opts, options)
     return _ffi_api.TargetCreate("vulkan", *opts)
 
 

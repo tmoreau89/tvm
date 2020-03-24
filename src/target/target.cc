@@ -110,7 +110,7 @@ Target CreateTarget(const std::string& target_name,
     if (t->device_name == "intel_graphics") {
       t->thread_warp_size = 16;
     }
-  } else if (target_name == "metal" || target_name == "vulkan") {
+  } else if (target_name == "metal") {
     t->device_type = kDLMetal;
     t->keys_array.push_back(tir::StringImmNode::make(target_name));
     t->keys_array.push_back(tir::StringImmNode::make("gpu"));
