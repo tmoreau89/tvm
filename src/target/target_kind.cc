@@ -271,7 +271,8 @@ TVM_REGISTER_TARGET_KIND("metal", kDLMetal)
 
 TVM_REGISTER_TARGET_KIND("vulkan", kDLVulkan)
     .add_attr_option<Bool>("system-lib")
-    .add_attr_option<Integer>("max_num_threads", Integer(256))
+    .add_attr_option<Integer>("max_num_threads", Integer(1024))
+    .add_attr_option<Integer>("thread_warp_size", Integer(64))
     .set_default_keys({"vulkan", "gpu"});
 
 TVM_REGISTER_TARGET_KIND("webgpu", kDLWebGPU)
