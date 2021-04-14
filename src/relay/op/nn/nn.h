@@ -24,6 +24,7 @@
 #ifndef TVM_RELAY_OP_NN_NN_H_
 #define TVM_RELAY_OP_NN_NN_H_
 
+#include <tvm/auto_scheduler/compute_dag.h>
 #include <tvm/ir/attrs.h>
 #include <tvm/ir/expr.h>
 #include <tvm/relay/type.h>
@@ -71,12 +72,19 @@ bool DenseRel(const Array<Type>& types, int num_inputs, const Attrs& attrs,
     oshape.Set((oshape.size() - 1), param->units);
   } else {
     if (weight == nullptr) return false;
-    Array<tvm::PrimExpr> wshape = weight->shape;
-    ICHECK(static_cast<int>(weight->shape.size()) == 2);
-    if (!data->shape.back().as<tir::AnyNode>()) {
-      ICHECK(reporter->AssertEQ(data->shape[data->shape.size() - 1], weight->shape[1]))
-          << "DenseRel: input dimension doesn't match,"
-          << " data shape=" << data->shape << ", weight shape=" << weight->shape;
+    Array<tvm::PrimExpr> wshape;
+    if (param->auto_scheduler_rewritten_layout.size() == 0) {
+      wshape = weight->shape;
+
+      ICHECK(static_cast<int>(weight->shape.size()) == 2);
+      if (!data->shape.back().as<tir::AnyNode>()) {
+        ICHECK(reporter->AssertEQ(data->shape[data->shape.size() - 1], weight->shape[1]))
+            << "DenseRel: input dimension doesn't match,"
+            << " data shape=" << data->shape << ", weight shape=" << weight->shape;
+      }
+    } else {
+      wshape = auto_scheduler::GetShapeFromRewrittenLayout(param->auto_scheduler_rewritten_layout,
+                                                           {"j", "k"});
     }
     oshape.Set((oshape.size() - 1), wshape[0]);
   }
